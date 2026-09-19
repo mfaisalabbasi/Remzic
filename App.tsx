@@ -22,6 +22,7 @@ function App() {
     </SafeAreaProvider>
   );
 }
+//sss
 
 function AppContent() {
   const safeAreaInsets = useSafeAreaInsets();
