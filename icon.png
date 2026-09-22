@@ -1,0 +1,36 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Base: Deep Obsidian Fintech Gradient -->
+  <rect width="1024" height="1024" rx="224" fill="#080C0A"/>
+  
+  <!-- Subtle Radial Ambient Glow -->
+  <circle cx="512" cy="512" r="380" fill="url(#ambientGlow)" opacity="0.6"/>
+  
+  <!-- Outer Geometric Frame / Border Accent -->
+  <rect x="96" y="96" width="832" height="832" rx="160" stroke="url(#borderGradient)" stroke-width="6" opacity="0.4"/>
+
+  <!-- Core Glyph: The Stylized "R" for Remzik -->
+  <path d="M340 284H560C680 284 752 352 752 460C752 552 684 624 576 648L728 740H616L480 652H440V740H340V284ZM440 372V564H556C624 564 660 528 660 468C660 408 624 372 556 372H440Z" fill="url(#emeraldGradient)"/>
+
+  <!-- Blockchain / RWA Precision Node Element -->
+  <circle cx="680" cy="340" r="28" fill="#34D399" opacity="0.9"/>
+  <circle cx="680" cy="340" r="12" fill="#080C0A"/>
+
+  <!-- Definitions & Gradients -->
+  <defs>
+    <radialGradient id="ambientGlow" cx="0.5" cy="0.3" r="0.7" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B981" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#080C0A" stop-opacity="0"/>
+    </radialGradient>
+    
+    <linearGradient id="borderGradient" x1="96" y1="96" x2="928" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34D399" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#10B981" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <linearGradient id="emeraldGradient" x1="340" y1="284" x2="728" y2="740" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6EE7B7"/>
+      <stop offset="0.5" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+</svg>

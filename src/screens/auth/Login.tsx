@@ -21,7 +21,6 @@ import {
 import DateTimePicker, {
   DateTimePickerAndroid,
 } from '@react-native-community/datetimepicker';
-import { Colors } from '../../theme/colors';
 
 type Role = 'INVESTOR';
 
@@ -78,7 +77,7 @@ export const LoginScreen = ({
     setStep(2);
   };
 
-  // 📂 Native Document Picker Integration (Updated to modern API error handling)
+  // Native Document Picker Integration
   const handlePickDocument = async (type: 'id' | 'address') => {
     try {
       const pickerResult = await pick({
@@ -102,7 +101,6 @@ export const LoginScreen = ({
     } catch (err) {
       if (isErrorWithCode(err)) {
         if (err.code === errorCodes.OPERATION_CANCELED) {
-          // User cancelled the picker selection - safely ignore
           return;
         }
       }
@@ -110,7 +108,7 @@ export const LoginScreen = ({
     }
   };
 
-  // 📅 Cross-Platform Date Picker Trigger
+  // Cross-Platform Date Picker Trigger
   const openDatePicker = () => {
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
@@ -128,7 +126,6 @@ export const LoginScreen = ({
     }
   };
 
-  // Format Date to YYYY-MM-DD string for backend
   const formattedDobString = dob.toISOString().split('T')[0];
 
   // Final Step: Atomic Registration + KYC Submission
@@ -155,7 +152,6 @@ export const LoginScreen = ({
       formData.append('idDocument', idDocument);
       formData.append('addressProof', addressProof);
 
-      // Simulated network request
       setTimeout(() => {
         setIsSubmitting(false);
         RNAlert.alert(
@@ -182,8 +178,19 @@ export const LoginScreen = ({
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) },
+      ]}
+    >
       <StatusBar barStyle="light-content" />
+
+      {/* Ambient Background Glow Layer */}
+      <View style={styles.ambientGlowContainer} pointerEvents="none">
+        <View style={styles.glowOrbPrimary} />
+        <View style={styles.glowOrbSecondary} />
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -192,20 +199,23 @@ export const LoginScreen = ({
         {/* Header Section */}
         <View style={styles.headerContainer}>
           <View style={styles.logoBox}>
+            <View style={styles.logoInnerGlow} />
             <Text style={styles.logoText}>R</Text>
           </View>
+
           <Text style={styles.title}>
             {step === 0 && (isSignUp ? 'Create Account' : 'Welcome Back')}
             {step === 1 && 'Personal Information'}
             {step === 2 && 'KYC Verification'}
           </Text>
+
           <Text style={styles.subtitle}>
             {step === 0 &&
               (isSignUp
-                ? 'Secure access to Remzik Protocol'
-                : 'Sign in to your Remzik account')}
-            {step === 1 && 'Step 1 of 2: Enter your basic investor credentials'}
-            {step === 2 && 'Step 2 of 2: Complete identity verification'}
+                ? 'Secure institutional access to Remzik'
+                : 'Sign in to your secure investor dashboard')}
+            {step === 1 && 'Step 1 of 2: Enter your verified credentials'}
+            {step === 2 && 'Step 2 of 2: Regulatory identity verification'}
           </Text>
 
           {step > 0 && (
@@ -252,7 +262,10 @@ export const LoginScreen = ({
                   />
                 </View>
 
-                <TouchableOpacity style={styles.forgotPasswordContainer}>
+                <TouchableOpacity
+                  style={styles.forgotPasswordContainer}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.forgotPasswordText}>
                     Forgot Password?
                   </Text>
@@ -261,8 +274,12 @@ export const LoginScreen = ({
                 <TouchableOpacity
                   style={styles.primaryButton}
                   onPress={handleLogin}
+                  activeOpacity={0.85}
                 >
                   <Text style={styles.primaryButtonText}>Log In</Text>
+                  <View style={styles.arrowIconCircle}>
+                    <Text style={styles.arrowText}>→</Text>
+                  </View>
                 </TouchableOpacity>
               </>
             )}
@@ -333,10 +350,14 @@ export const LoginScreen = ({
                 <TouchableOpacity
                   style={styles.primaryButton}
                   onPress={handleNextToKyc}
+                  activeOpacity={0.85}
                 >
                   <Text style={styles.primaryButtonText}>
                     Next: Identity Verification
                   </Text>
+                  <View style={styles.arrowIconCircle}>
+                    <Text style={styles.arrowText}>→</Text>
+                  </View>
                 </TouchableOpacity>
               </>
             )}
@@ -345,8 +366,9 @@ export const LoginScreen = ({
             {step === 2 && (
               <>
                 <View style={styles.roleBadgeContainer}>
+                  <View style={styles.liveDot} />
                   <Text style={styles.roleBadgeText}>
-                    💼 Registering as Verified Investor
+                    Registering as Verified Institutional Investor
                   </Text>
                 </View>
 
@@ -369,26 +391,22 @@ export const LoginScreen = ({
                   <TouchableOpacity
                     style={styles.textInput}
                     onPress={openDatePicker}
+                    activeOpacity={0.8}
                   >
-                    <Text
-                      style={{
-                        color: Colors.textPrimary,
-                        fontSize: 14,
-                        paddingTop: 2,
-                      }}
-                    >
+                    <Text style={styles.datePickerText}>
                       📅 {formattedDobString}
                     </Text>
                   </TouchableOpacity>
 
                   {/* iOS Inline / Modal Spinner Picker */}
                   {Platform.OS === 'ios' && showIosDatePicker && (
-                    <View style={{ marginTop: 10, alignItems: 'center' }}>
+                    <View style={styles.iosPickerContainer}>
                       <DateTimePicker
                         value={dob}
                         mode="date"
                         display="spinner"
                         maximumDate={new Date()}
+                        themeVariant="dark"
                         onChange={(event, selectedDate) => {
                           if (selectedDate) setDob(selectedDate);
                         }}
@@ -396,8 +414,11 @@ export const LoginScreen = ({
                       <TouchableOpacity
                         style={styles.iosDoneButton}
                         onPress={() => setShowIosDatePicker(false)}
+                        activeOpacity={0.8}
                       >
-                        <Text style={styles.iosDoneButtonText}>Done</Text>
+                        <Text style={styles.iosDoneButtonText}>
+                          Confirm Date
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -409,12 +430,21 @@ export const LoginScreen = ({
                     Identity Document (Passport / Iqama)
                   </Text>
                   <TouchableOpacity
-                    style={styles.uploadBox}
+                    style={[
+                      styles.uploadBox,
+                      idDocument && styles.uploadBoxSuccess,
+                    ]}
                     onPress={() => handlePickDocument('id')}
+                    activeOpacity={0.75}
                   >
-                    <Text style={styles.uploadText}>
+                    <Text
+                      style={[
+                        styles.uploadText,
+                        idDocument && styles.uploadTextSuccess,
+                      ]}
+                    >
                       {idDocument
-                        ? `✅ ${idDocument.name}`
+                        ? `✓ Verified: ${idDocument.name}`
                         : '📁 Tap to browse document (.pdf, .png)'}
                     </Text>
                   </TouchableOpacity>
@@ -426,12 +456,21 @@ export const LoginScreen = ({
                     Proof of Address (Utility Bill / Statement)
                   </Text>
                   <TouchableOpacity
-                    style={styles.uploadBox}
+                    style={[
+                      styles.uploadBox,
+                      addressProof && styles.uploadBoxSuccess,
+                    ]}
                     onPress={() => handlePickDocument('address')}
+                    activeOpacity={0.75}
                   >
-                    <Text style={styles.uploadText}>
+                    <Text
+                      style={[
+                        styles.uploadText,
+                        addressProof && styles.uploadTextSuccess,
+                      ]}
+                    >
                       {addressProof
-                        ? `✅ ${addressProof.name}`
+                        ? `✓ Verified: ${addressProof.name}`
                         : '📁 Tap to browse address proof'}
                     </Text>
                   </TouchableOpacity>
@@ -441,6 +480,7 @@ export const LoginScreen = ({
                   <TouchableOpacity
                     style={styles.secondaryButtonHalf}
                     onPress={() => setStep(1)}
+                    activeOpacity={0.75}
                   >
                     <Text style={styles.secondaryButtonText}>Back</Text>
                   </TouchableOpacity>
@@ -452,8 +492,9 @@ export const LoginScreen = ({
                     ]}
                     onPress={handleFinalSubmit}
                     disabled={isSubmitting}
+                    activeOpacity={0.85}
                   >
-                    <Text style={styles.primaryButtonText}>
+                    <Text style={styles.primaryButtonHalfText}>
                       {isSubmitting ? 'Submitting...' : 'Finalize & Submit'}
                     </Text>
                   </TouchableOpacity>
@@ -480,6 +521,7 @@ export const LoginScreen = ({
                 setStep(!isSignUp ? 1 : 0);
               }
             }}
+            activeOpacity={0.7}
           >
             <Text style={styles.footerActionText}>
               {isSignUp || step > 0 ? 'Log In' : 'Sign Up'}
@@ -494,170 +536,269 @@ export const LoginScreen = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#080C0A',
+  },
+  ambientGlowContainer: {
+    ...StyleSheet.absoluteFill,
+    overflow: 'hidden',
+  },
+  glowOrbPrimary: {
+    position: 'absolute',
+    top: -60,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  },
+  glowOrbSecondary: {
+    position: 'absolute',
+    bottom: 40,
+    left: -100,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(16, 185, 129, 0.05)',
   },
   keyboardView: {
     flex: 1,
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingVertical: 10,
   },
   headerContainer: {
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 12,
   },
   logoBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: Colors.secondary,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#111816',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.accent,
-    marginBottom: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    marginBottom: 10,
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  logoInnerGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+    backgroundColor: 'rgba(52, 211, 153, 0.08)',
   },
   logoText: {
-    color: Colors.accent,
-    fontSize: 20,
-    fontWeight: 'bold',
+    color: '#34D399',
+    fontSize: 22,
+    fontWeight: '800',
   },
   title: {
-    color: Colors.white,
+    color: '#F0FDF4',
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 4,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   subtitle: {
     color: '#94A3B8',
     fontSize: 13,
     textAlign: 'center',
+    lineHeight: 18,
   },
   progressTrack: {
     width: '100%',
     height: 4,
-    backgroundColor: '#334155',
+    backgroundColor: '#1E293B',
     borderRadius: 2,
-    marginTop: 12,
+    marginTop: 14,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    backgroundColor: Colors.accent,
+    backgroundColor: '#34D399',
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: 5,
+    paddingVertical: 4,
   },
   formCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 24,
-    padding: 20,
+    backgroundColor: '#111816',
+    borderRadius: 22,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.22)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
   },
   inputGroup: {
     marginBottom: 14,
   },
   inputLabel: {
-    color: Colors.textPrimary,
+    color: '#F0FDF4',
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 6,
+    letterSpacing: 0.2,
   },
   textInput: {
-    backgroundColor: Colors.background,
+    backgroundColor: '#080C0A',
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
     fontSize: 14,
-    color: Colors.textPrimary,
+    color: '#F0FDF4',
     justifyContent: 'center',
   },
+  datePickerText: {
+    color: '#F0FDF4',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   uploadBox: {
-    backgroundColor: Colors.background,
+    backgroundColor: '#080C0A',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
     borderStyle: 'dashed',
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  uploadBoxSuccess: {
+    borderColor: '#34D399',
+    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+    borderStyle: 'solid',
+  },
   uploadText: {
-    color: Colors.textSecondary,
+    color: '#94A3B8',
     fontSize: 13,
     fontWeight: '500',
   },
+  uploadTextSuccess: {
+    color: '#34D399',
+    fontWeight: '700',
+  },
   roleBadgeContainer: {
-    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.3)',
+    borderColor: 'rgba(52, 211, 153, 0.25)',
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
     marginBottom: 16,
-    alignItems: 'center',
+    gap: 8,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
   },
   roleBadgeText: {
-    color: Colors.accent,
-    fontSize: 13,
-    fontWeight: '600',
+    color: '#34D399',
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   forgotPasswordContainer: {
     alignItems: 'flex-end',
     marginBottom: 16,
   },
   forgotPasswordText: {
-    color: Colors.accent,
+    color: '#34D399',
     fontSize: 12,
     fontWeight: '600',
   },
   primaryButton: {
-    backgroundColor: Colors.accent,
-    borderRadius: 10,
-    paddingVertical: 14,
+    backgroundColor: '#34D399',
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 6,
+    shadowColor: '#34D399',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
   },
   primaryButtonText: {
-    color: Colors.primary,
+    color: '#080C0A',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  arrowIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(8, 12, 10, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowText: {
+    color: '#080C0A',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 10,
+    marginTop: 12,
   },
   primaryButtonHalf: {
     flex: 1,
-    backgroundColor: Colors.accent,
-    borderRadius: 10,
-    paddingVertical: 14,
+    backgroundColor: '#34D399',
+    borderRadius: 14,
+    paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#34D399',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  primaryButtonHalfText: {
+    color: '#080C0A',
+    fontSize: 14.5,
+    fontWeight: '800',
   },
   secondaryButtonHalf: {
     flex: 1,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 14,
+    paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   secondaryButtonText: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#F0FDF4',
+    fontSize: 14.5,
+    fontWeight: '700',
   },
   disabledButton: {
     opacity: 0.5,
@@ -673,20 +814,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   footerActionText: {
-    color: Colors.accent,
+    color: '#34D399',
     fontSize: 13,
     fontWeight: '700',
   },
+  iosPickerContainer: {
+    marginTop: 12,
+    backgroundColor: '#080C0A',
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+    alignItems: 'center',
+  },
   iosDoneButton: {
-    backgroundColor: Colors.accent,
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 20,
-    marginTop: 8,
+    backgroundColor: '#34D399',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    marginTop: 10,
   },
   iosDoneButtonText: {
-    color: Colors.primary,
-    fontWeight: '700',
-    fontSize: 12,
+    color: '#080C0A',
+    fontWeight: '800',
+    fontSize: 13,
   },
 });

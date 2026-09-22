@@ -62,7 +62,10 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
 
       {/* Header Title */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Invest</Text>
+        <Text style={styles.headerTitle}>Invest RWA</Text>
+        <Text style={styles.headerSubtitle}>
+          Institutional-grade asset pool
+        </Text>
       </View>
 
       {/* Search Input Bar */}
@@ -70,7 +73,7 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search assets..."
+          placeholder="Search locations, towers..."
           placeholderTextColor="#64748B"
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -87,6 +90,7 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
           {categories.map(category => (
             <TouchableOpacity
               key={category}
+              activeOpacity={0.8}
               style={[
                 styles.categoryTab,
                 selectedCategory === category && styles.categoryTabActive,
@@ -115,22 +119,32 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
           <TouchableOpacity
             key={item.id}
             style={styles.propertyCard}
+            activeOpacity={0.9}
             onPress={() =>
               navigation.navigate('AssetDetails', { property: item })
             }
           >
             <View style={styles.propertyImagePlaceholder}>
               <View style={styles.fundedBadge}>
-                <Text style={styles.fundedText}>{item.funded}</Text>
+                <Text style={styles.fundedText}>🔥 {item.funded}</Text>
               </View>
               <Text style={styles.propertyTypeTag}>{item.type} Asset</Text>
             </View>
             <View style={styles.propertyInfo}>
               <Text style={styles.propertyName}>{item.title}</Text>
               <Text style={styles.propertyLocation}>📍 {item.location}</Text>
+
+              <View style={styles.propertyDivider} />
+
               <View style={styles.propertyYieldRow}>
-                <Text style={styles.yieldHighlight}>{item.yield}</Text>
-                <Text style={styles.minInvestment}>{item.minInvestment}</Text>
+                <View>
+                  <Text style={styles.yieldLabel}>Projected Yield</Text>
+                  <Text style={styles.yieldHighlight}>{item.yield}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.yieldLabel}>Entry Threshold</Text>
+                  <Text style={styles.minInvestment}>{item.minInvestment}</Text>
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -143,28 +157,34 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#080C0A', // Deep obsidian dark base with minimal green undertone
   },
   header: {
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
   headerTitle: {
-    color: Colors.white,
+    color: '#F8FAFC',
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  headerSubtitle: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    backgroundColor: '#111816',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(16, 185, 129, 0.15)',
     marginHorizontal: 20,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
   },
   searchIcon: {
     marginRight: 8,
@@ -172,12 +192,12 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: Colors.white,
+    color: '#F8FAFC',
     fontSize: 14,
     padding: 0,
   },
   categoryContainer: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   categoryScroll: {
     paddingHorizontal: 20,
@@ -187,90 +207,114 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: Colors.surface,
+    backgroundColor: '#111816',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
     marginRight: 8,
   },
   categoryTabActive: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   categoryText: {
-    color: Colors.textSecondary,
+    color: '#94A3B8',
     fontSize: 13,
     fontWeight: '600',
   },
   categoryTextActive: {
-    color: Colors.primary,
-    fontWeight: '700',
+    color: '#080C0A',
+    fontWeight: '800',
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 30,
+    paddingBottom: 40,
   },
   propertyCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
+    backgroundColor: '#111816',
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 14,
+    borderColor: 'rgba(16, 185, 129, 0.12)',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
   },
   propertyImagePlaceholder: {
-    height: 140,
-    backgroundColor: '#1E293B',
+    height: 150,
+    backgroundColor: '#16221E',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   fundedBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(8, 12, 10, 0.85)',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(16, 185, 129, 0.2)',
   },
   fundedText: {
-    color: '#22C55E',
+    color: '#34D399',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   propertyTypeTag: {
-    color: Colors.accent,
-    fontWeight: '600',
+    color: '#34D399',
+    fontWeight: '700',
     fontSize: 13,
+    letterSpacing: 0.5,
   },
   propertyInfo: {
-    padding: 14,
+    padding: 16,
   },
   propertyName: {
-    color: Colors.white,
-    fontSize: 15,
+    color: '#F8FAFC',
+    fontSize: 16,
     fontWeight: '700',
     marginBottom: 2,
   },
   propertyLocation: {
     color: '#94A3B8',
     fontSize: 12,
-    marginBottom: 10,
+    marginBottom: 12,
+  },
+  propertyDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    marginBottom: 12,
   },
   propertyYieldRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  yieldHighlight: {
-    color: '#22C55E',
-    fontSize: 12,
+  yieldLabel: {
+    color: '#64748B',
+    fontSize: 10,
     fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  yieldHighlight: {
+    color: '#34D399',
+    fontSize: 13,
+    fontWeight: '800',
   },
   minInvestment: {
-    color: Colors.textSecondary,
-    fontSize: 12,
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

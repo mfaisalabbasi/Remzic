@@ -1,20 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StatusBar, View, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from './src/theme/colors';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { SplashScreen } from './src/screens/auth/SplashScreen';
 
 export default function App() {
+  const [isAppReady, setIsAppReady] = useState(false);
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      <AppNavigator />
-    </View>
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" />
+
+        {!isAppReady ? (
+          <SplashScreen onFinish={() => setIsAppReady(true)} />
+        ) : (
+          <AppNavigator />
+        )}
+      </View>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // backgroundColor: Colors.primary,
+    backgroundColor: '#080C0A',
   },
 });

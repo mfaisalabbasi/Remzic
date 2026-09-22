@@ -10,6 +10,7 @@ import { InvestmentFlowScreen } from '../screens/investment/InvestmentFlowScreen
 import { DistributionsScreen } from '../screens/distributions/DistributionsScreen';
 import { NotificationsScreen } from '../screens/MoreSetting/NotificationsScreen';
 import { ProfileScreen } from '../screens/MoreSetting/ProfileScreen';
+import { WalletRecoveryScreen } from '../screens/MoreSetting/WalletRecoveryScreen';
 import { SideMenuDrawer } from '../screens/MoreSetting/SideMenuDrawer';
 
 const Stack = createNativeStackNavigator();
@@ -42,14 +43,19 @@ export const AppNavigator = () => {
               component={NotificationsScreen}
             />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen
+              name="WalletRecovery"
+              component={WalletRecoveryScreen}
+            />
 
-            {/* Slide-out Drawer Modal Route */}
+            {/* Fixed Slide-out Drawer Modal Route */}
             <Stack.Screen
               name="SideMenu"
               component={SideMenuDrawer}
               options={{
-                presentation: 'transparentModal',
+                presentation: 'modal', // Fixed: 'transparentModal' conflicts with 'slide_from_right'
                 animation: 'slide_from_right',
+                headerShown: false,
               }}
             />
           </>

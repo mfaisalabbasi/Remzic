@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,37 +6,142 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
+
+const { width } = Dimensions.get('window');
+
+// --- Dedicated Inline SVG Vector Icons ---
+const BellIcon = ({ size = 18, color = Colors.accent }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <Path d="M13.73 21a2 2 0 01-3.46 0" />
+  </Svg>
+);
+
+const MenuIcon = ({ size = 20, color = Colors.accent }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M4 6h16M4 12h16M4 18h16" />
+  </Svg>
+);
+
+// Custom Fintech SVG Icons for Action Grid
+const InvestIcon = ({ size = 22, color = '#34D399' }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
+  </Svg>
+);
+
+const DepositIcon = ({ size = 22, color = '#34D399' }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M12 3v12m0 0l4-4m-4 4l-4-4M2 17l.621 2.485A2 2 0 004.56 21h14.88a2 2 0 001.939-1.515L22 17" />
+  </Svg>
+);
+
+const WithdrawIcon = ({ size = 22, color = '#34D399' }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M12 15V3m0 0l-4 4m4-4l4 4M2 17l.621 2.485A2 2 0 004.56 21h14.88a2 2 0 001.939-1.515L22 17" />
+  </Svg>
+);
+
+// Custom Market / Trading Chart Icon representing the secondary market
+const MarketIcon = ({ size = 22, color = '#34D399' }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M3 3v18h18" />
+    <Path d="M18 17V9" />
+    <Path d="M13 17V5" />
+    <Path d="M8 17v-3" />
+  </Svg>
+);
 
 export const HomeScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const [isBalanceHidden, setIsBalanceHidden] = useState(false);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header Section with Working Hamburger/Profile Trigger */}
+      {/* Header Section */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.userInfo}
+          activeOpacity={0.8}
           onPress={() => navigation.navigate('SideMenu')}
         >
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.hamburgerIcon}>☰</Text>
+          <View style={styles.avatarContainer}>
+            <MenuIcon size={20} color={Colors.accent} />
+            <View style={styles.onlineIndicator} />
           </View>
           <View>
-            <Text style={styles.welcomeSubtext}>Assalamu Alaikum,</Text>
+            <Text style={styles.welcomeSubtext}>Assalamu Alaikum</Text>
             <Text style={styles.userName}>Muhammad Faisal</Text>
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.notificationButton}
+          activeOpacity={0.8}
           onPress={() => navigation.navigate('Notifications')}
         >
-          <Text style={styles.notificationIcon}>🔔</Text>
+          <BellIcon size={18} color={Colors.accent} />
           <View style={styles.notificationBadge} />
         </TouchableOpacity>
       </View>
@@ -45,17 +150,30 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Total Portfolio Value Card */}
+        {/* Institutional Emerald Portfolio Card */}
         <View style={styles.portfolioCard}>
+          <View style={styles.portfolioGlow} />
           <View style={styles.portfolioCardHeader}>
             <Text style={styles.portfolioTitle}>Total Portfolio Value</Text>
-            <TouchableOpacity>
-              <Text style={styles.eyeIcon}>👁️</Text>
+            <TouchableOpacity
+              onPress={() => setIsBalanceHidden(!isBalanceHidden)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.eyeIcon}>
+                {isBalanceHidden ? '🙈' : '👁️'}
+              </Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.portfolioAmount}>$ 24,680.50</Text>
-          <View style={styles.growthBadge}>
-            <Text style={styles.growthText}>📈 +12.4% (all time)</Text>
+
+          <Text style={styles.portfolioAmount}>
+            {isBalanceHidden ? '••••••••' : '$24,680.50'}
+          </Text>
+
+          <View style={styles.growthBadgeRow}>
+            <View style={styles.growthBadge}>
+              <Text style={styles.growthText}>📈 +12.4% All-Time</Text>
+            </View>
+            <Text style={styles.securityText}>🔒 Secured & Insured</Text>
           </View>
 
           <View style={styles.portfolioStatsRow}>
@@ -66,80 +184,107 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Returns</Text>
-              <Text style={styles.statValue}>$6,480</Text>
+              <Text style={styles.statValueSuccess}>+$6,480</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Available Balance</Text>
+              <Text style={styles.statLabel}>Available</Text>
               <Text style={styles.statValue}>$2,500</Text>
             </View>
           </View>
         </View>
 
-        {/* Quick Actions Grid */}
+        {/* Quick Action Grid with SVG Fintech Icons */}
         <View style={styles.actionsGrid}>
           <TouchableOpacity
             style={styles.actionButton}
+            activeOpacity={0.8}
             onPress={() => navigation.navigate('Invest')}
           >
             <View style={styles.actionIconBox}>
-              <Text style={styles.actionIcon}>🏛️</Text>
+              <InvestIcon size={22} color={Colors.accent} />
             </View>
             <Text style={styles.actionText}>Invest</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.actionButton}
+            activeOpacity={0.8}
             onPress={() => navigation.navigate('Wallet')}
           >
             <View style={styles.actionIconBox}>
-              <Text style={styles.actionIcon}>💳</Text>
+              <DepositIcon size={22} color={Colors.accent} />
             </View>
             <Text style={styles.actionText}>Deposit</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.actionButton}
+            activeOpacity={0.8}
             onPress={() => navigation.navigate('Wallet')}
           >
             <View style={styles.actionIconBox}>
-              <Text style={styles.actionIcon}>💸</Text>
+              <WithdrawIcon size={22} color={Colors.accent} />
             </View>
             <Text style={styles.actionText}>Withdraw</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.actionButton}
+            activeOpacity={0.8}
             onPress={() => navigation.navigate('Marketplace')}
           >
             <View style={styles.actionIconBox}>
-              <Text style={styles.actionIcon}>⚡</Text>
+              <MarketIcon size={22} color={Colors.accent} />
             </View>
-            <Text style={styles.actionText}>More</Text>
+            <Text style={styles.actionText}>Market</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Featured Properties Section */}
+        {/* Featured Properties Header */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Featured Properties</Text>
+          <View>
+            <Text style={styles.sectionTitle}>Featured RWA Assets</Text>
+            <Text style={styles.sectionSubtitle}>
+              Institutional-grade real estate
+            </Text>
+          </View>
           <TouchableOpacity onPress={() => navigation.navigate('Invest')}>
-            <Text style={styles.viewAllText}>View All</Text>
+            <Text style={styles.viewAllText}>View All →</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Featured Property Card */}
         <TouchableOpacity
           style={styles.propertyCard}
+          activeOpacity={0.9}
           onPress={() => navigation.navigate('AssetDetails', { assetId: '1' })}
         >
           <View style={styles.propertyImagePlaceholder}>
-            <Text style={styles.propertyImageTag}>Real Estate Token</Text>
+            <View style={styles.assetBadge}>
+              <Text style={styles.assetBadgeText}>🔥 High Demand</Text>
+            </View>
+            <Text style={styles.propertyImageTag}>Dubai Creek Residence</Text>
           </View>
+
           <View style={styles.propertyInfo}>
-            <Text style={styles.propertyName}>Dubai Creek Residence</Text>
-            <Text style={styles.propertyLocation}>📍 Dubai, UAE</Text>
+            <View style={styles.propertyHeaderRow}>
+              <Text style={styles.propertyName}>Dubai Creek Luxury Tower</Text>
+              <Text style={styles.propertyTokenSymbol}>[DXB-01]</Text>
+            </View>
+            <Text style={styles.propertyLocation}>📍 Downtown Dubai, UAE</Text>
+
+            <View style={styles.propertyDivider} />
+
             <View style={styles.propertyYieldRow}>
-              <Text style={styles.yieldHighlight}>8.5% expected yield</Text>
-              <Text style={styles.minInvestment}>Min. $500</Text>
+              <View>
+                <Text style={styles.yieldLabel}>Projected APY</Text>
+                <Text style={styles.yieldHighlight}>8.5% Net Yield</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.yieldLabel}>Entry Threshold</Text>
+                <Text style={styles.minInvestment}>Min. $500</Text>
+              </View>
             </View>
           </View>
         </TouchableOpacity>
@@ -151,61 +296,70 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#03100B',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(16, 185, 129, 0.06)',
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.secondary,
+  avatarContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#082017',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.accent,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
     marginRight: 12,
   },
-  hamburgerIcon: {
-    color: Colors.accent,
-    fontSize: 18,
-    fontWeight: '700',
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#03100B',
   },
   welcomeSubtext: {
-    color: '#94A3B8',
-    fontSize: 12,
+    color: '#6EE7B7',
+    opacity: 0.7,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   userName: {
-    color: Colors.white,
-    fontSize: 16,
+    color: '#F0FDF4',
+    fontSize: 15,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   notificationButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: Colors.surface,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#082017',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  notificationIcon: {
-    fontSize: 16,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
   },
   notificationBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 10,
+    right: 10,
     width: 8,
     height: 8,
     borderRadius: 4,
@@ -213,15 +367,30 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 30,
+    paddingBottom: 40,
+    paddingTop: 10,
   },
   portfolioCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 10,
+    backgroundColor: '#061A12',
+    borderRadius: 24,
+    padding: 22,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  portfolioGlow: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
   },
   portfolioCardHeader: {
     flexDirection: 'row',
@@ -229,149 +398,233 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   portfolioTitle: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '500',
+    color: '#6EE7B7',
+    opacity: 0.8,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   eyeIcon: {
     fontSize: 14,
   },
   portfolioAmount: {
-    color: Colors.white,
-    fontSize: 28,
-    fontWeight: '700',
-    marginVertical: 8,
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '800',
+    marginVertical: 10,
+    letterSpacing: 0.5,
+  },
+  growthBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
   },
   growthBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 16,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   growthText: {
-    color: '#22C55E',
+    color: '#34D399',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  securityText: {
+    color: '#6EE7B7',
+    opacity: 0.6,
+    fontSize: 11,
+    fontWeight: '500',
   },
   portfolioStatsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 14,
+    borderTopColor: 'rgba(16, 185, 129, 0.1)',
+    paddingTop: 16,
   },
   statItem: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   statLabel: {
-    color: '#94A3B8',
+    color: '#6EE7B7',
+    opacity: 0.6,
     fontSize: 11,
-    marginBottom: 2,
+    marginBottom: 3,
+    fontWeight: '500',
   },
   statValue: {
-    color: Colors.white,
+    color: '#F0FDF4',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  statValueSuccess: {
+    color: '#34D399',
+    fontSize: 13,
+    fontWeight: '700',
   },
   statDivider: {
     width: 1,
-    height: 24,
-    backgroundColor: Colors.border,
+    height: 28,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    marginHorizontal: 8,
   },
   actionsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: 22,
   },
   actionButton: {
     alignItems: 'center',
     flex: 1,
   },
   actionIconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: Colors.surface,
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#061A12',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 6,
-  },
-  actionIcon: {
-    fontSize: 22,
+    borderColor: 'rgba(16, 185, 129, 0.15)',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   actionText: {
-    color: '#94A3B8',
+    color: '#A7F3D0',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 12,
+    alignItems: 'flex-end',
+    marginTop: 28,
+    marginBottom: 14,
   },
   sectionTitle: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#F0FDF4',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  sectionSubtitle: {
+    color: '#6EE7B7',
+    opacity: 0.6,
+    fontSize: 11,
+    marginTop: 2,
   },
   viewAllText: {
     color: Colors.accent,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
   },
   propertyCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
+    backgroundColor: '#061A12',
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 12,
+    borderColor: 'rgba(16, 185, 129, 0.15)',
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
   },
   propertyImagePlaceholder: {
-    height: 140,
-    backgroundColor: '#1E293B',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  propertyImageTag: {
-    color: Colors.accent,
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  propertyInfo: {
+    height: 150,
+    backgroundColor: '#09291D',
+    justifyContent: 'flex-end',
     padding: 14,
   },
-  propertyName: {
-    color: Colors.white,
-    fontSize: 15,
-    fontWeight: '700',
+  assetBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(3, 16, 11, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  assetBadgeText: {
+    color: Colors.accent,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  propertyImageTag: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 16,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  propertyInfo: {
+    padding: 16,
+  },
+  propertyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 2,
   },
+  propertyName: {
+    color: '#F0FDF4',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  propertyTokenSymbol: {
+    color: '#6EE7B7',
+    opacity: 0.6,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   propertyLocation: {
-    color: '#94A3B8',
+    color: '#A7F3D0',
+    opacity: 0.8,
     fontSize: 12,
-    marginBottom: 10,
+    marginBottom: 12,
+  },
+  propertyDivider: {
+    height: 1,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    marginBottom: 12,
   },
   propertyYieldRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  yieldHighlight: {
-    color: '#22C55E',
-    fontSize: 12,
+  yieldLabel: {
+    color: '#6EE7B7',
+    opacity: 0.6,
+    fontSize: 10,
     fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  yieldHighlight: {
+    color: '#34D399',
+    fontSize: 13,
+    fontWeight: '800',
   },
   minInvestment: {
-    color: '#94A3B8',
-    fontSize: 12,
+    color: '#F0FDF4',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
