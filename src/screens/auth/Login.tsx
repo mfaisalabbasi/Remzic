@@ -21,6 +21,10 @@ import {
 import DateTimePicker, {
   DateTimePickerAndroid,
 } from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../../navigation/AuthContext';
+import { walletApi } from '../../services/api/walletApi';
+import { apiClient } from '../../services/api/client';
 
 type Role = 'INVESTOR';
 
@@ -33,6 +37,7 @@ export const LoginScreen = ({
 }) => {
   const insets = useSafeAreaInsets();
   const initialMode = route?.params?.mode === 'signup';
+  const { login } = useAuth();
 
   const [isSignUp, setIsSignUp] = useState(initialMode);
   const [step, setStep] = useState<number>(initialMode ? 1 : 0);
@@ -55,29 +60,107 @@ export const LoginScreen = ({
   const [addressProof, setAddressProof] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Regex Helpers for Validation
+  const isValidEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+  const isValidPhone = (val: string) => /^\+?[0-9\s\-()]{8,15}$/.test(val);
+
   // Handle Login submission
-  const handleLogin = () => {
-    if (!email || !password) {
+  const handleLogin = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail || !password) {
       RNAlert.alert('Error', 'Please fill in all required fields.');
       return;
     }
-    RNAlert.alert('Success', 'Logged in successfully!');
+    if (!isValidEmail(trimmedEmail)) {
+      RNAlert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await apiClient.post('/auth/login', {
+        email: trimmedEmail,
+        password,
+      });
+
+      const data = response.data;
+      const token = data.accessToken || data.token || data.access_token;
+
+      if (!token) {
+        throw new Error('Authentication token missing from server response.');
+      }
+
+      await AsyncStorage.setItem('accessToken', token);
+
+      try {
+        console.log(
+          '🔄 [Web3 Bridge] Triggering server-side Privy wallet sync...',
+        );
+        const syncResult = await walletApi.syncWallet();
+        console.log(
+          '✅ [Web3 Bridge] Privy wallet synchronized successfully:',
+          syncResult.walletAddress,
+        );
+      } catch (walletErr) {
+        console.warn(
+          '⚠️ [Web3 Bridge] Wallet sync warning (non-blocking):',
+          walletErr,
+        );
+      }
+
+      await login(token);
+    } catch (err: any) {
+      RNAlert.alert(
+        'Login Failed',
+        err.response?.data?.message ||
+          err.message ||
+          'Please check your connection.',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleNextToKyc = () => {
-    if (!name || !email || !phone || !password) {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
+
+    if (
+      !trimmedName ||
+      !trimmedEmail ||
+      !trimmedPhone ||
+      !password ||
+      !confirmPassword
+    ) {
       RNAlert.alert('Missing Fields', 'Please complete all fields to proceed.');
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      RNAlert.alert('Invalid Email', 'Please enter a valid email format.');
+      return;
+    }
+    if (!isValidPhone(trimmedPhone)) {
+      RNAlert.alert('Invalid Phone', 'Please enter a valid phone number.');
+      return;
+    }
+    if (password.length < 6) {
+      RNAlert.alert(
+        'Weak Password',
+        'Password must be at least 6 characters long.',
+      );
       return;
     }
     if (password !== confirmPassword) {
       RNAlert.alert('Password Mismatch', 'Passwords do not match.');
       return;
     }
-    setKycFullName(name);
+
+    setKycFullName(trimmedName);
     setStep(2);
   };
 
-  // Native Document Picker Integration
   const handlePickDocument = async (type: 'id' | 'address') => {
     try {
       const pickerResult = await pick({
@@ -87,10 +170,24 @@ export const LoginScreen = ({
       });
 
       const file = pickerResult[0];
+
+      let processedUri = file.uri;
+      if (Platform.OS === 'ios') {
+        processedUri = decodeURI(file.uri);
+        if (!processedUri.startsWith('file://')) {
+          processedUri = `file://${processedUri}`;
+        }
+      }
+
+      // Safely extract and clean the file name to prevent duplicate extensions like .png.PNG
+      const rawName =
+        file.name || processedUri.split('/').pop() || 'document.pdf';
+      const cleanName = rawName.replace(/(\.[a-zA-Z0-9]+)\1+$/i, '$1');
+
       const formattedFile = {
-        uri: file.uri,
-        type: file.type || 'application/pdf',
-        name: file.name || 'document',
+        uri: processedUri,
+        type: file.type || 'application/octet-stream',
+        name: cleanName,
       };
 
       if (type === 'id') {
@@ -108,7 +205,6 @@ export const LoginScreen = ({
     }
   };
 
-  // Cross-Platform Date Picker Trigger
   const openDatePicker = () => {
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
@@ -130,10 +226,31 @@ export const LoginScreen = ({
 
   // Final Step: Atomic Registration + KYC Submission
   const handleFinalSubmit = async () => {
-    if (!kycFullName || !idDocument || !addressProof) {
+    const trimmedKycName = kycFullName.trim();
+
+    if (!trimmedKycName) {
       RNAlert.alert(
         'KYC Incomplete',
-        'Please fill out all fields and upload both verification documents.',
+        'Please enter your full name as per your official ID.',
+      );
+      return;
+    }
+
+    const today = new Date();
+    const age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (age < 18 || (age === 18 && m < 0)) {
+      RNAlert.alert(
+        'Age Restriction',
+        'You must be at least 18 years old to register as an investor.',
+      );
+      return;
+    }
+
+    if (!idDocument || !addressProof) {
+      RNAlert.alert(
+        'Documents Missing',
+        'Please upload both your identity document and proof of address.',
       );
       return;
     }
@@ -141,38 +258,83 @@ export const LoginScreen = ({
     setIsSubmitting(true);
     try {
       const formData = new FormData();
-      formData.append('name', name);
-      formData.append('email', email);
-      formData.append('phone', phone);
+      formData.append('name', name.trim());
+      formData.append('email', email.trim().toLowerCase());
+      formData.append('phone', phone.trim());
       formData.append('password', password);
       formData.append('role', selectedRole);
-      formData.append('fullName', kycFullName);
+      formData.append('fullName', trimmedKycName);
       formData.append('dob', formattedDobString);
 
-      formData.append('idDocument', idDocument);
-      formData.append('addressProof', addressProof);
+      formData.append('idDocument', {
+        uri: idDocument.uri,
+        type: idDocument.type,
+        name: idDocument.name,
+      } as any);
 
-      setTimeout(() => {
-        setIsSubmitting(false);
-        RNAlert.alert(
-          'Verification Pending',
-          'Account and KYC documents submitted successfully for review!',
-          [
-            {
-              text: 'Sign In',
-              onPress: () => {
-                setStep(0);
-                setIsSignUp(false);
-              },
-            },
-          ],
+      formData.append('addressProof', {
+        uri: addressProof.uri,
+        type: addressProof.type,
+        name: addressProof.name,
+      } as any);
+
+      // 🛠️ Points directly to the UserController prefix /users/register-with-kyc
+      await apiClient.post('/users/register-with-kyc', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      // Automatically log in and provision the Privy embedded wallet post-signup
+      try {
+        const loginResponse = await apiClient.post('/auth/login', {
+          email: email.trim().toLowerCase(),
+          password,
+        });
+        const loginData = loginResponse.data;
+        const token =
+          loginData.accessToken || loginData.token || loginData.access_token;
+        if (token) {
+          await AsyncStorage.setItem('accessToken', token);
+          console.log(
+            '🔄 [Web3 Bridge] Provisioning post-signup Privy wallet...',
+          );
+          await walletApi.syncWallet();
+          console.log(
+            '✅ [Web3 Bridge] Post-signup Privy wallet generated successfully.',
+          );
+
+          await login(token);
+          return;
+        }
+      } catch (syncErr) {
+        console.warn(
+          '⚠️ [Web3 Bridge] Post-signup wallet sync warning:',
+          syncErr,
         );
-      }, 1500);
-    } catch (err) {
+      }
+
+      setIsSubmitting(false);
+      RNAlert.alert(
+        'Verification Pending',
+        'Account and KYC documents submitted successfully!',
+        [
+          {
+            text: 'Sign In',
+            onPress: () => {
+              setStep(0);
+              setIsSignUp(false);
+            },
+          },
+        ],
+      );
+    } catch (err: any) {
       setIsSubmitting(false);
       RNAlert.alert(
         'Submission Failed',
-        'Please check your connection and try again.',
+        err.response?.data?.message ||
+          err.message ||
+          'Please check your connection and try again.',
       );
     }
   };
@@ -238,7 +400,7 @@ export const LoginScreen = ({
             {step === 0 && !isSignUp && (
               <>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Email or Phone</Text>
+                  <Text style={styles.inputLabel}>Email Address</Text>
                   <TextInput
                     style={styles.textInput}
                     placeholder="name@example.com"
@@ -275,8 +437,11 @@ export const LoginScreen = ({
                   style={styles.primaryButton}
                   onPress={handleLogin}
                   activeOpacity={0.85}
+                  disabled={isSubmitting}
                 >
-                  <Text style={styles.primaryButtonText}>Log In</Text>
+                  <Text style={styles.primaryButtonText}>
+                    {isSubmitting ? 'Logging In...' : 'Log In'}
+                  </Text>
                   <View style={styles.arrowIconCircle}>
                     <Text style={styles.arrowText}>→</Text>
                   </View>
@@ -398,7 +563,6 @@ export const LoginScreen = ({
                     </Text>
                   </TouchableOpacity>
 
-                  {/* iOS Inline / Modal Spinner Picker */}
                   {Platform.OS === 'ios' && showIosDatePicker && (
                     <View style={styles.iosPickerContainer}>
                       <DateTimePicker

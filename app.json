@@ -1,4 +1,8 @@
 {
   "name": "remzic",
-  "displayName": "remzic"
+  "displayName": "remzic",
+  "plugins": [
+    "expo-secure-store",
+    "expo-web-browser"
+  ]
 }

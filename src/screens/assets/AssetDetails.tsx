@@ -1,4 +1,5 @@
-import React from 'react';
+// src/screens/AssetDetails.tsx
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,23 +8,31 @@ import {
   TouchableOpacity,
   StatusBar,
   ImageBackground,
+  Dimensions,
+  Share,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
+
+const { width } = Dimensions.get('window');
 
 // --- Institutional Grade Color Palette ---
 const PALETTE = {
   bg: '#080C0A', // Deep Obsidian
   cardBg: '#111816', // Slightly lighter dark gray
+  cardSubBg: '#18221F', // Secondary card background
   textMain: '#F9FAFB', // Almost white
   textMuted: '#9CA3AF', // Gray 400
   accent: '#34D399', // Emerald Green
   accentText: '#053121', // Very dark green for high contrast on buttons
   border: 'rgba(52, 211, 153, 0.15)', // Subtle emerald border
+  borderActive: 'rgba(52, 211, 153, 0.4)',
   danger: '#EF4444',
+  infoBlue: '#38BDF8',
 };
 
-// --- Custom SVG Icons to Bypass Library/Font Linking Issues ---
+// --- Custom SVG Icons ---
 const ArrowLeftIcon = ({ size = 20, color = PALETTE.textMain }) => (
   <Svg
     width={size}
@@ -38,7 +47,6 @@ const ArrowLeftIcon = ({ size = 20, color = PALETTE.textMain }) => (
     <Path d="M19 12H5M12 19l-7-7 7-7" />
   </Svg>
 );
-
 const ShareIcon = ({ size = 18, color = PALETTE.textMain }) => (
   <Svg
     width={size}
@@ -53,7 +61,6 @@ const ShareIcon = ({ size = 18, color = PALETTE.textMain }) => (
     <Path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
   </Svg>
 );
-
 const BookmarkIcon = ({ size = 18, color = PALETTE.textMain }) => (
   <Svg
     width={size}
@@ -68,7 +75,6 @@ const BookmarkIcon = ({ size = 18, color = PALETTE.textMain }) => (
     <Path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
   </Svg>
 );
-
 const MapPinIcon = ({ size = 14, color = PALETTE.accent }) => (
   <Svg
     width={size}
@@ -84,7 +90,6 @@ const MapPinIcon = ({ size = 14, color = PALETTE.accent }) => (
     <Circle cx="12" cy="10" r="3" />
   </Svg>
 );
-
 const ActivityIcon = ({ size = 18, color = PALETTE.accent }) => (
   <Svg
     width={size}
@@ -99,7 +104,6 @@ const ActivityIcon = ({ size = 18, color = PALETTE.accent }) => (
     <Path d="M22 12h-4l-3 9L9 3l-3 9H2" />
   </Svg>
 );
-
 const ClockIcon = ({ size = 18, color = PALETTE.accent }) => (
   <Svg
     width={size}
@@ -115,7 +119,6 @@ const ClockIcon = ({ size = 18, color = PALETTE.accent }) => (
     <Path d="M12 6v6l4 2" />
   </Svg>
 );
-
 const ShieldIcon = ({ size = 18, color = PALETTE.accent }) => (
   <Svg
     width={size}
@@ -130,7 +133,6 @@ const ShieldIcon = ({ size = 18, color = PALETTE.accent }) => (
     <Path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
   </Svg>
 );
-
 const FileTextIcon = ({ size = 16, color = PALETTE.textMain }) => (
   <Svg
     width={size}
@@ -146,7 +148,6 @@ const FileTextIcon = ({ size = 16, color = PALETTE.textMain }) => (
     <Path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
   </Svg>
 );
-
 const ChevronRightIcon = ({ size = 16, color = PALETTE.textMuted }) => (
   <Svg
     width={size}
@@ -161,7 +162,6 @@ const ChevronRightIcon = ({ size = 16, color = PALETTE.textMuted }) => (
     <Path d="M9 18l6-6-6-6" />
   </Svg>
 );
-
 const ArrowRightIcon = ({ size = 18, color = PALETTE.accentText }) => (
   <Svg
     width={size}
@@ -176,7 +176,6 @@ const ArrowRightIcon = ({ size = 18, color = PALETTE.accentText }) => (
     <Path d="M5 12h14M12 5l7 7-7 7" />
   </Svg>
 );
-
 const StarIcon = ({ size = 12, color = PALETTE.accentText }) => (
   <Svg
     width={size}
@@ -198,39 +197,100 @@ export const AssetDetails = ({
   route: any;
 }) => {
   const insets = useSafeAreaInsets();
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [tokenCount, setTokenCount] = useState<number>(10);
 
-  // Fallback property data with safe types
+  // Safely extract raw payload passed from InvestScreen matching Entity properties
   const rawProperty = route?.params?.property || {};
 
+  const expectedYieldNum = Number(rawProperty.expectedYield) || 8.5;
+  const unitPrice = Number(rawProperty.unitPrice) || 100;
+  const totalValue = Number(rawProperty.totalValue) || 1000000;
+  const funded = Number(rawProperty.funded) || 750000;
+  const investorsCount = Number(rawProperty.investors) || 42;
+  const rentalIncome = Number(rawProperty.rentalIncome) || 85000;
+
   const property = {
-    title: rawProperty.title || 'Dubai Creek Harbour Residences',
-    location: rawProperty.location || 'Dubai, UAE',
-    yield: rawProperty.yield !== undefined ? rawProperty.yield : 8.5,
-    minInvestment: rawProperty.minInvestment || 500,
+    id: rawProperty.id || 'asset-default-id',
+    title: rawProperty.title || 'Institutional RWA Asset',
+    symbol: rawProperty.symbol || 'AYT',
+    location: rawProperty.location || 'Global Financial Hub',
+    yield: rawProperty.expectedYield
+      ? `${rawProperty.expectedYield}% expected yield`
+      : '8.5% expected yield',
+    expectedYieldNum,
     investmentPeriod: rawProperty.investmentPeriod || '3 Years',
     imageUri:
       rawProperty.imageUri ||
+      (rawProperty.galleryImages && rawProperty.galleryImages[0]) ||
       'https://images.unsplash.com/photo-1582468013943-5e9256002277?q=80&w=800&auto=format&fit=crop',
     overview:
+      rawProperty.description ||
       rawProperty.overview ||
-      'Premium waterfront residential project located in the heart of Dubai Creek Harbour with strong rental demand and long-term capital growth potential. Fully digitized title ownership on distributed ledger.',
-    tokenSupply: rawProperty.tokenSupply || '12,500 RWA Tokens',
-    valuation: rawProperty.valuation || '$12.5M USD',
+      'Institutional-grade fully audited tokenized real-world asset backed by verified physical cash flows and distributed ledger ownership protocols.',
+    tokenSupply: rawProperty.tokenSupply
+      ? `${Number(rawProperty.tokenSupply).toLocaleString()} Tokens`
+      : '10,000 Tokens',
+    unitPrice,
+    totalValue,
+    funded,
+    investorsCount,
+    rentalIncome,
+    tokenAddress: rawProperty.tokenAddress || '0x71C...39a2',
+    treasuryAddress: rawProperty.treasuryAddress || '0x49B...12f8',
+    governanceAddress: rawProperty.governanceAddress || '0x32A...81e1',
+    metadataHash:
+      rawProperty.metadataHash ||
+      'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqab43vk66gpi35ylwli',
+    galleryImages:
+      Array.isArray(rawProperty.galleryImages) &&
+      rawProperty.galleryImages.length > 0
+        ? rawProperty.galleryImages
+        : [
+            rawProperty.imageUri ||
+              'https://images.unsplash.com/photo-1582468013943-5e9256002277?q=80&w=800&auto=format&fit=crop',
+          ],
+    legalDocuments: rawProperty.legalDocuments || [
+      'Offering_Memorandum_2026.pdf',
+      'Title_Deed_Verified.pdf',
+    ],
+    financialDocuments: rawProperty.financialDocuments || [
+      'Q1_Audit_Report.pdf',
+    ],
   };
 
-  const formatMinInvestment = (val: number | string) => {
-    if (typeof val === 'number') {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(val);
+  const currentDisplayImage =
+    property.galleryImages[activeImageIndex] || property.imageUri;
+
+  // Prevent NaN in funding percentage calculation
+  const fundingPercentage =
+    totalValue > 0 ? Math.min(Math.round((funded / totalValue) * 100), 100) : 0;
+
+  const safeTokenCount = Math.max(1, isNaN(tokenCount) ? 1 : tokenCount);
+  const calculatedInvestmentCost = safeTokenCount * property.unitPrice;
+  const estimatedAnnualReturn =
+    calculatedInvestmentCost * (property.expectedYieldNum / 100);
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Check out this tokenized RWA asset on Remzik: ${property.title} (${property.symbol}) located in ${property.location}. Projected yield: ${property.yield}.`,
+      });
+    } catch (error) {
+      console.log('Error sharing asset:', error);
     }
-    return val.toString().startsWith('$') ? val.toString() : `$${val}`;
   };
 
-  const MetricCard = ({ iconType, label, value }: any) => (
+  const MetricCard = ({
+    iconType,
+    label,
+    value,
+  }: {
+    iconType: string;
+    label: string;
+    value: string;
+  }) => (
     <View style={styles.metricCard}>
       <View style={styles.metricIconContainer}>
         {iconType === 'activity' && <ActivityIcon />}
@@ -238,7 +298,9 @@ export const AssetDetails = ({
         {iconType === 'shield' && <ShieldIcon />}
       </View>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricValue} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 
@@ -251,12 +313,15 @@ export const AssetDetails = ({
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
+        {/* Hero Banner Image with Carousel Support */}
         <ImageBackground
-          source={{ uri: property.imageUri }}
+          source={{ uri: currentDisplayImage }}
           style={styles.heroImage}
           imageStyle={styles.heroImageStyle}
         >
-          <View style={[styles.floatingHeader, { marginTop: insets.top + 16 }]}>
+          <View style={styles.imageOverlayGradient} />
+
+          <View style={[styles.floatingHeader, { marginTop: insets.top + 10 }]}>
             <TouchableOpacity
               style={styles.iconButton}
               onPress={() => navigation.goBack()}
@@ -266,19 +331,37 @@ export const AssetDetails = ({
             </TouchableOpacity>
 
             <View style={styles.headerActionsRight}>
-              <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={handleShare}
+                activeOpacity={0.7}
+              >
                 <ShareIcon />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>
-                <BookmarkIcon />
+              <TouchableOpacity
+                style={[
+                  styles.iconButton,
+                  isBookmarked && styles.iconButtonActive,
+                ]}
+                onPress={() => setIsBookmarked(!isBookmarked)}
+                activeOpacity={0.7}
+              >
+                <BookmarkIcon
+                  color={isBookmarked ? PALETTE.accent : PALETTE.textMain}
+                />
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.titleOverlaySection}>
-            <View style={styles.tagPill}>
-              <StarIcon />
-              <Text style={styles.tagText}>RWA Real Estate</Text>
+            <View style={styles.tagRow}>
+              <View style={styles.tagPill}>
+                <StarIcon />
+                <Text style={styles.tagText}>Remzik Verified RWA</Text>
+              </View>
+              <View style={styles.symbolPill}>
+                <Text style={styles.symbolText}>{property.symbol}</Text>
+              </View>
             </View>
             <Text style={styles.propertyTitle}>{property.title}</Text>
             <TouchableOpacity style={styles.locationRow} activeOpacity={0.8}>
@@ -288,16 +371,43 @@ export const AssetDetails = ({
           </View>
         </ImageBackground>
 
+        {/* Gallery Thumbnails */}
+        {property.galleryImages.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.thumbnailScroll}
+          >
+            {property.galleryImages.map((img: string, index: number) => {
+              const isActive = activeImageIndex === index;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  activeOpacity={0.9}
+                  onPress={() => setActiveImageIndex(index)}
+                >
+                  <ImageBackground
+                    source={{ uri: img }}
+                    style={[
+                      styles.thumbnailPreview,
+                      isActive && styles.thumbnailPreviewActive,
+                    ]}
+                  >
+                    <View style={styles.thumbnailOverlay} />
+                  </ImageBackground>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
         <View style={styles.bodyContainer}>
+          {/* Key Metrics Grid */}
           <View style={styles.metricsRow}>
             <MetricCard
               iconType="activity"
               label="Projected Yield"
-              value={
-                typeof property.yield === 'number'
-                  ? `${property.yield}% pa`
-                  : property.yield
-              }
+              value={property.yield}
             />
             <MetricCard
               iconType="clock"
@@ -306,13 +416,56 @@ export const AssetDetails = ({
             />
             <MetricCard
               iconType="shield"
-              label="Min. Investment"
-              value={formatMinInvestment(property.minInvestment)}
+              label="Unit Price"
+              value={`$${property.unitPrice}`}
             />
           </View>
 
+          {/* Capital Funding Progress Bar Card */}
+          <View style={styles.fundingCard}>
+            <View style={styles.fundingHeaderRow}>
+              <Text style={styles.fundingCardTitle}>
+                Capital Allocation Progress
+              </Text>
+              <Text style={styles.fundingPercentageText}>
+                {fundingPercentage}% Funded
+              </Text>
+            </View>
+            <View style={styles.progressBarBackground}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${fundingPercentage}%` },
+                ]}
+              />
+            </View>
+            <View style={styles.fundingStatsRow}>
+              <Text style={styles.fundingStatSub}>
+                Raised:{' '}
+                <Text style={styles.fundingStatHighlight}>
+                  ${funded.toLocaleString()}
+                </Text>
+              </Text>
+              <Text style={styles.fundingStatSub}>
+                Target:{' '}
+                <Text style={styles.fundingStatHighlight}>
+                  ${totalValue.toLocaleString()}
+                </Text>
+              </Text>
+              <Text style={styles.fundingStatSub}>
+                Investors:{' '}
+                <Text style={styles.fundingStatHighlight}>
+                  {investorsCount}
+                </Text>
+              </Text>
+            </View>
+          </View>
+
+          {/* Asset Overview Section */}
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Asset Profile</Text>
+            <Text style={styles.sectionTitle}>
+              Asset Profile & Underwriting
+            </Text>
             <Text style={styles.sectionBody}>{property.overview}</Text>
 
             <View style={styles.infoGrid}>
@@ -321,41 +474,184 @@ export const AssetDetails = ({
                 <Text style={styles.infoData}>{property.tokenSupply}</Text>
               </View>
               <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Asset Valuation</Text>
-                <Text style={styles.infoData}>{property.valuation}</Text>
+                <Text style={styles.infoLabel}>Annual Rental Income</Text>
+                <Text style={styles.infoData}>
+                  ${rentalIncome.toLocaleString()}
+                </Text>
               </View>
             </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.documentsButton}
-            onPress={() => {}}
-            activeOpacity={0.8}
-          >
-            <FileTextIcon />
-            <Text style={styles.documentsButtonText}>
-              View Legal Offering Memorandum
-            </Text>
-            <ChevronRightIcon />
-          </TouchableOpacity>
+          {/* Interactive Token Return Calculator */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Yield & Return Calculator</Text>
+            <View style={styles.calculatorCard}>
+              <View style={styles.calcRow}>
+                <Text style={styles.calcLabel}>Select Token Quantity</Text>
+                <View style={styles.calcControlRow}>
+                  <TouchableOpacity
+                    style={styles.calcBtn}
+                    onPress={() =>
+                      setTokenCount(Math.max(1, safeTokenCount - 5))
+                    }
+                  >
+                    <Text style={styles.calcBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.calcValueText}>
+                    {safeTokenCount} Tokens
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.calcBtn}
+                    onPress={() => setTokenCount(safeTokenCount + 5)}
+                  >
+                    <Text style={styles.calcBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-          <View style={{ height: 20 }} />
+              <View style={styles.contractDivider} />
+
+              <View style={styles.calcResultBox}>
+                <View>
+                  <Text style={styles.calcResultLabel}>Total Investment</Text>
+                  <Text style={styles.calcResultVal}>
+                    ${calculatedInvestmentCost.toLocaleString()}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.calcResultLabel}>Est. Yearly Return</Text>
+                  <Text
+                    style={[styles.calcResultVal, { color: PALETTE.accent }]}
+                  >
+                    +${estimatedAnnualReturn.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* On-Chain Smart Contract Details Section */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>
+              Blockchain Transparency & Governance
+            </Text>
+            <View style={styles.contractCard}>
+              <View style={styles.contractRow}>
+                <Text style={styles.contractLabel}>Token Contract</Text>
+                <Text
+                  style={styles.contractValue}
+                  numberOfLines={1}
+                  ellipsizeMode="middle"
+                >
+                  {property.tokenAddress}
+                </Text>
+              </View>
+              <View style={styles.contractDivider} />
+              <View style={styles.contractRow}>
+                <Text style={styles.contractLabel}>Escrow Treasury</Text>
+                <Text
+                  style={styles.contractValue}
+                  numberOfLines={1}
+                  ellipsizeMode="middle"
+                >
+                  {property.treasuryAddress}
+                </Text>
+              </View>
+              <View style={styles.contractDivider} />
+              <View style={styles.contractRow}>
+                <Text style={styles.contractLabel}>Governance DAO</Text>
+                <Text
+                  style={styles.contractValue}
+                  numberOfLines={1}
+                  ellipsizeMode="middle"
+                >
+                  {property.governanceAddress}
+                </Text>
+              </View>
+              <View style={styles.contractDivider} />
+              <View style={styles.contractRow}>
+                <Text style={styles.contractLabel}>IPFS Metadata Hash</Text>
+                <Text
+                  style={styles.contractValue}
+                  numberOfLines={1}
+                  ellipsizeMode="middle"
+                >
+                  {property.metadataHash}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Legal Documents & Offering Memorandum Links */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Compliance & Legal Vault</Text>
+            {property.legalDocuments.map((doc: string, index: number) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.documentsButton}
+                onPress={() =>
+                  Alert.alert(
+                    'Secure Vault',
+                    `Downloading encrypted compliance document: ${doc}`,
+                  )
+                }
+                activeOpacity={0.8}
+              >
+                <FileTextIcon />
+                <Text style={styles.documentsButtonText}>{doc}</Text>
+                <ChevronRightIcon />
+              </TouchableOpacity>
+            ))}
+            {property.financialDocuments.map((doc: string, index: number) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.documentsButton}
+                onPress={() =>
+                  Alert.alert(
+                    'Financial Vault',
+                    `Downloading audited financial report: ${doc}`,
+                  )
+                }
+                activeOpacity={0.8}
+              >
+                <FileTextIcon color={PALETTE.infoBlue} />
+                <Text style={styles.documentsButtonText}>{doc}</Text>
+                <ChevronRightIcon />
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={{ height: 30 }} />
         </View>
       </ScrollView>
 
+      {/* Sticky Bottom Capital Allocation CTA Bar */}
       <View
         style={[
           styles.footerContainer,
-          { paddingBottom: Math.max(insets.bottom, 20) },
+          { paddingBottom: Math.max(insets.bottom, 16) },
         ]}
       >
+        <View style={styles.footerPriceMeta}>
+          <Text style={styles.footerSubLabel}>Price per Token</Text>
+          <Text style={styles.footerPriceVal}>
+            ${property.unitPrice}{' '}
+            <Text style={styles.footerSymbolText}>({property.symbol})</Text>
+          </Text>
+        </View>
         <TouchableOpacity
           style={styles.investNowButton}
-          onPress={() => navigation.navigate('InvestmentFlow', { property })}
+          onPress={() =>
+            navigation.navigate('InvestmentFlow', {
+              property,
+              tokenCount: safeTokenCount,
+              walletAddress: (globalThis as any)?.userWalletAddress || '',
+            })
+          }
           activeOpacity={0.9}
         >
           <Text style={styles.investNowButtonText}>Allocate Capital</Text>
-          <View style={{ marginLeft: 8 }}>
+          <View style={styles.arrowCircle}>
             <ArrowRightIcon />
           </View>
         </TouchableOpacity>
@@ -365,22 +661,21 @@ export const AssetDetails = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 100,
-  },
+  container: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingBottom: 120 },
   heroImage: {
     width: '100%',
-    height: 320,
+    height: 340,
     justifyContent: 'space-between',
     paddingBottom: 24,
+    position: 'relative',
   },
-  heroImageStyle: {
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+  heroImageStyle: { borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  imageOverlayGradient: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(8, 12, 10, 0.5)',
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
   },
   floatingHeader: {
     flexDirection: 'row',
@@ -389,24 +684,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     zIndex: 10,
   },
-  headerActionsRight: {
-    flexDirection: 'row',
-    gap: 12,
-  },
+  headerActionsRight: { flexDirection: 'row', gap: 10 },
   iconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(8, 12, 10, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
-  titleOverlaySection: {
-    paddingHorizontal: 20,
-    backgroundColor: 'transparent',
+  iconButtonActive: {
+    borderColor: PALETTE.accent,
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
   },
+  titleOverlaySection: { paddingHorizontal: 20, zIndex: 2 },
+  tagRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   tagPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,9 +708,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-    gap: 4,
+    gap: 5,
   },
   tagText: {
     color: PALETTE.accentText,
@@ -425,15 +717,26 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  symbolPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  symbolText: {
+    color: PALETTE.textMain,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   propertyTitle: {
     color: PALETTE.textMain,
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 34,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 6,
+    lineHeight: 32,
   },
   locationRow: {
     flexDirection: 'row',
@@ -442,120 +745,232 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   propertyLocation: {
-    color: PALETTE.textMain,
-    fontSize: 14,
-    fontWeight: '500',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    color: PALETTE.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  thumbnailScroll: { paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
+  thumbnailPreview: {
+    width: 64,
+    height: 48,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  thumbnailPreviewActive: { borderColor: PALETTE.accent, borderWidth: 2 },
+  thumbnailOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   bodyContainer: {
     padding: 20,
-    marginTop: -16,
+    marginTop: -10,
     backgroundColor: PALETTE.bg,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    zIndex: 2,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   metricsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 32,
-    gap: 12,
-    marginTop: 8,
+    marginBottom: 20,
+    gap: 10,
+    marginTop: 4,
   },
   metricCard: {
     flex: 1,
     backgroundColor: PALETTE.cardBg,
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
     borderColor: PALETTE.border,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 3,
   },
   metricIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   metricLabel: {
     color: PALETTE.textMuted,
-    fontSize: 10,
+    fontSize: 9.5,
     textAlign: 'center',
     marginBottom: 4,
-    fontWeight: '500',
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   metricValue: {
     color: PALETTE.textMain,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 13.5,
+    fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 0.2,
   },
-  sectionContainer: {
-    marginBottom: 32,
+  fundingCard: {
+    backgroundColor: PALETTE.cardBg,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    marginBottom: 24,
   },
+  fundingHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  fundingCardTitle: {
+    color: PALETTE.textMain,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  fundingPercentageText: {
+    color: PALETTE.accent,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  progressBarBackground: {
+    height: 8,
+    backgroundColor: PALETTE.cardSubBg,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: PALETTE.accent,
+    borderRadius: 4,
+  },
+  fundingStatsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  fundingStatSub: { color: PALETTE.textMuted, fontSize: 11, fontWeight: '500' },
+  fundingStatHighlight: { color: PALETTE.textMain, fontWeight: '700' },
+  sectionContainer: { marginBottom: 24 },
   sectionTitle: {
     color: PALETTE.textMain,
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 16,
-    letterSpacing: 0.3,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 12,
+    letterSpacing: 0.2,
   },
   sectionBody: {
     color: PALETTE.textMuted,
-    fontSize: 14,
-    lineHeight: 24,
-    marginBottom: 20,
+    fontSize: 13.5,
+    lineHeight: 22,
+    marginBottom: 14,
   },
   infoGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: PALETTE.cardBg,
     borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    gap: 12,
+  },
+  infoItem: { flex: 1 },
+  infoLabel: {
+    color: PALETTE.textMuted,
+    fontSize: 10,
+    marginBottom: 4,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  infoData: { color: PALETTE.textMain, fontSize: 13, fontWeight: '700' },
+  calculatorCard: {
+    backgroundColor: PALETTE.cardBg,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: PALETTE.border,
   },
-  infoItem: {
-    flex: 1,
+  calcRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  infoLabel: {
-    color: PALETTE.textMuted,
-    fontSize: 11,
-    marginBottom: 4,
-    fontWeight: '500',
+  calcLabel: { color: PALETTE.textMuted, fontSize: 12, fontWeight: '600' },
+  calcControlRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  calcBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: PALETTE.cardSubBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: PALETTE.borderActive,
   },
-  infoData: {
+  calcBtnText: { color: PALETTE.accent, fontSize: 16, fontWeight: '800' },
+  calcValueText: {
     color: PALETTE.textMain,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 70,
+    textAlign: 'center',
+  },
+  calcResultBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  calcResultLabel: {
+    color: PALETTE.textMuted,
+    fontSize: 10,
     fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  calcResultVal: { color: PALETTE.textMain, fontSize: 15, fontWeight: '800' },
+  contractCard: {
+    backgroundColor: PALETTE.cardBg,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+  contractRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  contractLabel: { color: PALETTE.textMuted, fontSize: 11, fontWeight: '600' },
+  contractValue: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: '55%',
+  },
+  contractDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    marginVertical: 10,
   },
   documentsButton: {
     flexDirection: 'row',
     backgroundColor: PALETTE.cardBg,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: PALETTE.border,
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   documentsButtonText: {
     color: PALETTE.textMain,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     flex: 1,
     marginLeft: 12,
   },
@@ -564,23 +979,36 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
+    padding: 16,
     backgroundColor: PALETTE.bg,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
+    shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 20,
   },
+  footerPriceMeta: { justifyContent: 'center' },
+  footerSubLabel: {
+    color: PALETTE.textMuted,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+  },
+  footerPriceVal: { color: PALETTE.textMain, fontSize: 16, fontWeight: '800' },
+  footerSymbolText: { color: PALETTE.accent, fontSize: 12 },
   investNowButton: {
     flexDirection: 'row',
     backgroundColor: PALETTE.accent,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
     shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
@@ -589,8 +1017,16 @@ const styles = StyleSheet.create({
   },
   investNowButtonText: {
     color: PALETTE.accentText,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
+  },
+  arrowCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(5, 49, 33, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

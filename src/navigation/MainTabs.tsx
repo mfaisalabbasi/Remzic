@@ -13,7 +13,6 @@ const Tab = createBottomTabNavigator();
 
 // --- WORLD-CLASS FINTECH GEOMETRIC ICON COMPONENTS ---
 
-// UPDATED HOME ICON: More defined architectural outline
 const HomeIcon = ({ active }: { active: boolean }) => (
   <View style={styles.iconWrapper}>
     <View style={[styles.finHomeRoof, active && styles.activeStrokeRoof]} />
@@ -32,7 +31,6 @@ const InvestIcon = ({ active }: { active: boolean }) => (
   </View>
 );
 
-// UPDATED PORTFOLIO ICON: More detailed donut chart representation
 const PortfolioIcon = ({ active }: { active: boolean }) => (
   <View style={styles.finPortfolioWrapper}>
     <View style={[styles.donutRing, active && styles.activeBgBorder]}>
@@ -55,7 +53,6 @@ const MarketIcon = ({ active }: { active: boolean }) => (
   </View>
 );
 
-// Safe screen wrapper
 const createSafeScreen = (Component: React.ComponentType<any>) => {
   return ({ navigation, route }: { navigation: any; route: any }) => {
     const insets = useSafeAreaInsets();
@@ -199,8 +196,6 @@ const styles = StyleSheet.create({
   activeStrokeRoof: {
     borderBottomColor: '#34D399',
   },
-
-  // Central Action Button Floating Medallion
   centralPill: {
     width: 50,
     height: 36,
@@ -221,15 +216,12 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
-
-  // --- ICON ARCHITECTURE (Fintech Spec) ---
   iconWrapper: {
     width: 22,
     height: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // NEW Home Styles
   finHomeRoof: {
     width: 0,
     height: 0,
@@ -259,8 +251,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
   },
-
-  // Invest Styles (Retained)
   finInvestWrapper: {
     width: 22,
     height: 16,
@@ -297,8 +287,6 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-35deg' }],
     borderRadius: 1,
   },
-
-  // NEW Portfolio Styles
   finPortfolioWrapper: {
     width: 20,
     height: 20,
@@ -310,7 +298,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    borderWidth: 5, // Thickness of the ring
+    borderWidth: 5,
     borderColor: '#64748B',
     alignItems: 'center',
     justifyContent: 'center',
@@ -319,7 +307,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#080C0A', // Matches background
+    backgroundColor: '#080C0A',
   },
   donutSlice: {
     position: 'absolute',
@@ -327,12 +315,10 @@ const styles = StyleSheet.create({
     height: 10,
     backgroundColor: '#64748B',
     top: 0,
-    right: 2, // Positions the slice
+    right: 2,
     transform: [{ rotate: '25deg' }],
     borderTopRightRadius: 3,
   },
-
-  // Wallet Styles (Retained)
   finWalletShell: {
     width: 21,
     height: 15,
@@ -356,8 +342,6 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: '#64748B',
   },
-
-  // Market Styles (Retained)
   finMarketOuter: {
     width: 19,
     height: 19,

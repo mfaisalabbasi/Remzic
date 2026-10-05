@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
+import { useAuth } from '../../navigation/AuthContext'; // ✅ Correct path to exported hook // Import global auth context
 
 // --- Dedicated Inline SVG Vector Icons ---
 const ArrowLeftIcon = ({ size = 18, color = Colors.white }) => (
@@ -174,6 +175,8 @@ const LogOutIcon = ({ size = 18, color = '#EF4444' }) => (
 
 export const ProfileScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const { logout } = useAuth(); // Extract global logout function
+
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('USD ($)');
@@ -196,7 +199,13 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
         {
           text: 'Log Out',
           style: 'destructive',
-          onPress: () => navigation.goBack(),
+          onPress: async () => {
+            try {
+              await logout(); // Clears storage and switches root nav tree instantly
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
+          },
         },
       ],
     );

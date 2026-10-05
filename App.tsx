@@ -1,3 +1,4 @@
+import 'react-native-get-random-values';
 import React, { useState } from 'react';
 import { StatusBar, View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
