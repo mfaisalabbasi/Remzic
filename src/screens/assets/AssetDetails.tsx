@@ -1,5 +1,5 @@
 // src/screens/AssetDetails.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,12 @@ import {
   Dimensions,
   Share,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
+import { fetchAssetById } from '../../services/api/asset';
+import { InvestorGovernanceView } from './InvestorGovernanceView';
 
 const { width } = Dimensions.get('window');
 
@@ -199,73 +202,125 @@ export const AssetDetails = ({
   const insets = useSafeAreaInsets();
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [tokenCount, setTokenCount] = useState<number>(10);
+  const [tokenCount, setTokenCount] = useState<number>(1);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  // Safely extract raw payload passed from InvestScreen matching Entity properties
-  const rawProperty = route?.params?.property || {};
+  // Extract initial parameters passed via route
+  const initialParamProperty = route?.params?.property || {};
+  const assetId = initialParamProperty.id || route?.params?.assetId;
 
-  const expectedYieldNum = Number(rawProperty.expectedYield) || 8.5;
-  const unitPrice = Number(rawProperty.unitPrice) || 100;
-  const totalValue = Number(rawProperty.totalValue) || 1000000;
-  const funded = Number(rawProperty.funded) || 750000;
-  const investorsCount = Number(rawProperty.investors) || 42;
-  const rentalIncome = Number(rawProperty.rentalIncome) || 85000;
+  const [assetData, setAssetData] = useState<any>(initialParamProperty);
+
+  // Fetch complete asset details from backend if only ID is provided or data is partial
+  useEffect(() => {
+    let isMounted = true;
+    if (assetId && (!assetData.totalValue || !assetData.funding)) {
+      setLoading(true);
+      fetchAssetById(assetId)
+        .then(response => {
+          if (isMounted && response) {
+            setAssetData(response);
+          }
+        })
+        .catch(err => {
+          console.log('Failed to fetch asset details by ID:', err);
+        })
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [assetId]);
+
+  // Debug payload to check incoming database values in your Metro console
+  console.log('--- ASSET DATA DEBUG ---', {
+    rawFunded: assetData.funded,
+    rawTotalValue: assetData.totalValue,
+    rawTokenSupply: assetData.tokenSupply,
+    rawUnitPrice: assetData.unitPrice,
+  });
+
+  // Safely map metrics from backend responses with robust fallback support
+  const unitPrice = Number(assetData.unitPrice ?? 10);
+  const tokenSupply = Number(assetData.tokenSupply ?? 1000);
+
+  // Fallback chain for Total Valuation / Target Capital
+  const fundingTarget = Number(
+    assetData.totalValue ||
+      assetData.target ||
+      assetData.funding?.target ||
+      tokenSupply * unitPrice ||
+      10000,
+  );
+
+  // Fallback chain for Raised Capital (maps to TablePlus 'funded' column)
+  const fundingRaised = Number(
+    assetData.funded ?? assetData.funding?.raised ?? assetData.raised ?? 0,
+  );
+
+  const investorsCount = Number(
+    assetData.funding?.investors ?? assetData.investorsCount ?? 0,
+  );
+
+  const expectedYieldNum = Number(
+    assetData.expectedYield ?? assetData.yieldRate ?? 8.5,
+  );
+  const rentalIncome = Number(assetData.rentalIncome ?? 85000);
 
   const property = {
-    id: rawProperty.id || 'asset-default-id',
-    title: rawProperty.title || 'Institutional RWA Asset',
-    symbol: rawProperty.symbol || 'AYT',
-    location: rawProperty.location || 'Global Financial Hub',
-    yield: rawProperty.expectedYield
-      ? `${rawProperty.expectedYield}% expected yield`
-      : '8.5% expected yield',
+    id: assetData.id || assetId || 'asset-default-id',
+    title: assetData.title || 'Institutional RWA Asset',
+    symbol: assetData.symbol || 'REMZ',
+    location: assetData.location || 'Global Financial Hub',
+    yield: `${expectedYieldNum}% expected yield`,
     expectedYieldNum,
-    investmentPeriod: rawProperty.investmentPeriod || '3 Years',
+    investmentPeriod: assetData.investmentPeriod || '3 Years',
     imageUri:
-      rawProperty.imageUri ||
-      (rawProperty.galleryImages && rawProperty.galleryImages[0]) ||
+      assetData.imageUri ||
+      (assetData.galleryImages && assetData.galleryImages[0]) ||
       'https://images.unsplash.com/photo-1582468013943-5e9256002277?q=80&w=800&auto=format&fit=crop',
     overview:
-      rawProperty.description ||
-      rawProperty.overview ||
+      assetData.overview ||
+      assetData.description ||
       'Institutional-grade fully audited tokenized real-world asset backed by verified physical cash flows and distributed ledger ownership protocols.',
-    tokenSupply: rawProperty.tokenSupply
-      ? `${Number(rawProperty.tokenSupply).toLocaleString()} Tokens`
-      : '10,000 Tokens',
+    tokenSupply: `${tokenSupply.toLocaleString()} Tokens`,
     unitPrice,
-    totalValue,
-    funded,
+    totalValue: fundingTarget,
+    funded: fundingRaised,
     investorsCount,
     rentalIncome,
-    tokenAddress: rawProperty.tokenAddress || '0x71C...39a2',
-    treasuryAddress: rawProperty.treasuryAddress || '0x49B...12f8',
-    governanceAddress: rawProperty.governanceAddress || '0x32A...81e1',
-    metadataHash:
-      rawProperty.metadataHash ||
-      'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqab43vk66gpi35ylwli',
+    tokenAddress: assetData.tokenAddress || 'Pending On-Chain Deployment',
+    treasuryAddress: assetData.treasuryAddress || 'Pending On-Chain Deployment',
+    governanceAddress:
+      assetData.governanceAddress || 'Pending On-Chain Deployment',
+    metadataHash: assetData.metadataHash || 'ipfs://default-metadata',
     galleryImages:
-      Array.isArray(rawProperty.galleryImages) &&
-      rawProperty.galleryImages.length > 0
-        ? rawProperty.galleryImages
+      Array.isArray(assetData.galleryImages) &&
+      assetData.galleryImages.length > 0
+        ? assetData.galleryImages
         : [
-            rawProperty.imageUri ||
+            assetData.imageUri ||
               'https://images.unsplash.com/photo-1582468013943-5e9256002277?q=80&w=800&auto=format&fit=crop',
           ],
-    legalDocuments: rawProperty.legalDocuments || [
+    legalDocuments: assetData.legalDocuments || [
       'Offering_Memorandum_2026.pdf',
       'Title_Deed_Verified.pdf',
     ],
-    financialDocuments: rawProperty.financialDocuments || [
-      'Q1_Audit_Report.pdf',
-    ],
+    financialDocuments: assetData.financialDocuments || ['Q1_Audit_Report.pdf'],
   };
 
   const currentDisplayImage =
     property.galleryImages[activeImageIndex] || property.imageUri;
 
-  // Prevent NaN in funding percentage calculation
-  const fundingPercentage =
-    totalValue > 0 ? Math.min(Math.round((funded / totalValue) * 100), 100) : 0;
+  // Robust percentage calculation clamped strictly between 0 and 100
+  const rawPercentage =
+    property.totalValue > 0 ? (property.funded / property.totalValue) * 100 : 0;
+  const fundingPercentage = Math.min(
+    Math.max(Math.round(rawPercentage), 0),
+    100,
+  );
 
   const safeTokenCount = Math.max(1, isNaN(tokenCount) ? 1 : tokenCount);
   const calculatedInvestmentCost = safeTokenCount * property.unitPrice;
@@ -303,6 +358,22 @@ export const AssetDetails = ({
       </Text>
     </View>
   );
+
+  if (loading && !assetData.title) {
+    return (
+      <View
+        style={[
+          styles.container,
+          styles.centerLoader,
+          { backgroundColor: PALETTE.bg },
+        ]}
+      >
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator size="large" color={PALETTE.accent} />
+        <Text style={styles.loadingText}>Loading asset vault...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: PALETTE.bg }]}>
@@ -421,7 +492,7 @@ export const AssetDetails = ({
             />
           </View>
 
-          {/* Capital Funding Progress Bar Card */}
+          {/* Capital Funding Progress Bar Card (Synced from Database) */}
           <View style={styles.fundingCard}>
             <View style={styles.fundingHeaderRow}>
               <Text style={styles.fundingCardTitle}>
@@ -443,19 +514,19 @@ export const AssetDetails = ({
               <Text style={styles.fundingStatSub}>
                 Raised:{' '}
                 <Text style={styles.fundingStatHighlight}>
-                  ${funded.toLocaleString()}
+                  ${property.funded.toLocaleString()}
                 </Text>
               </Text>
               <Text style={styles.fundingStatSub}>
                 Target:{' '}
                 <Text style={styles.fundingStatHighlight}>
-                  ${totalValue.toLocaleString()}
+                  ${property.totalValue.toLocaleString()}
                 </Text>
               </Text>
               <Text style={styles.fundingStatSub}>
                 Investors:{' '}
                 <Text style={styles.fundingStatHighlight}>
-                  {investorsCount}
+                  {property.investorsCount}
                 </Text>
               </Text>
             </View>
@@ -476,7 +547,7 @@ export const AssetDetails = ({
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>Annual Rental Income</Text>
                 <Text style={styles.infoData}>
-                  ${rentalIncome.toLocaleString()}
+                  ${property.rentalIncome.toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -492,7 +563,7 @@ export const AssetDetails = ({
                   <TouchableOpacity
                     style={styles.calcBtn}
                     onPress={() =>
-                      setTokenCount(Math.max(1, safeTokenCount - 5))
+                      setTokenCount(Math.max(1, safeTokenCount - 1))
                     }
                   >
                     <Text style={styles.calcBtnText}>-</Text>
@@ -502,7 +573,7 @@ export const AssetDetails = ({
                   </Text>
                   <TouchableOpacity
                     style={styles.calcBtn}
-                    onPress={() => setTokenCount(safeTokenCount + 5)}
+                    onPress={() => setTokenCount(safeTokenCount + 1)}
                   >
                     <Text style={styles.calcBtnText}>+</Text>
                   </TouchableOpacity>
@@ -585,44 +656,57 @@ export const AssetDetails = ({
           {/* Legal Documents & Offering Memorandum Links */}
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>Compliance & Legal Vault</Text>
-            {property.legalDocuments.map((doc: string, index: number) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.documentsButton}
-                onPress={() =>
-                  Alert.alert(
-                    'Secure Vault',
-                    `Downloading encrypted compliance document: ${doc}`,
-                  )
-                }
-                activeOpacity={0.8}
-              >
-                <FileTextIcon />
-                <Text style={styles.documentsButtonText}>{doc}</Text>
-                <ChevronRightIcon />
-              </TouchableOpacity>
-            ))}
-            {property.financialDocuments.map((doc: string, index: number) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.documentsButton}
-                onPress={() =>
-                  Alert.alert(
-                    'Financial Vault',
-                    `Downloading audited financial report: ${doc}`,
-                  )
-                }
-                activeOpacity={0.8}
-              >
-                <FileTextIcon color={PALETTE.infoBlue} />
-                <Text style={styles.documentsButtonText}>{doc}</Text>
-                <ChevronRightIcon />
-              </TouchableOpacity>
-            ))}
+            {property.legalDocuments.map((doc: any, index: number) => {
+              const docTitle =
+                typeof doc === 'string'
+                  ? doc
+                  : doc.title || `Legal Doc ${index + 1}`;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.documentsButton}
+                  onPress={() =>
+                    Alert.alert(
+                      'Secure Vault',
+                      `Accessing compliance document: ${docTitle}`,
+                    )
+                  }
+                  activeOpacity={0.8}
+                >
+                  <FileTextIcon />
+                  <Text style={styles.documentsButtonText}>{docTitle}</Text>
+                  <ChevronRightIcon />
+                </TouchableOpacity>
+              );
+            })}
+            {property.financialDocuments.map((doc: any, index: number) => {
+              const docTitle =
+                typeof doc === 'string'
+                  ? doc
+                  : doc.title || `Financial Report ${index + 1}`;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.documentsButton}
+                  onPress={() =>
+                    Alert.alert(
+                      'Financial Vault',
+                      `Accessing financial report: ${docTitle}`,
+                    )
+                  }
+                  activeOpacity={0.8}
+                >
+                  <FileTextIcon color={PALETTE.infoBlue} />
+                  <Text style={styles.documentsButtonText}>{docTitle}</Text>
+                  <ChevronRightIcon />
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={{ height: 30 }} />
         </View>
+        <InvestorGovernanceView asset={property} />
       </ScrollView>
 
       {/* Sticky Bottom Capital Allocation CTA Bar */}
@@ -645,7 +729,6 @@ export const AssetDetails = ({
             navigation.navigate('InvestmentFlow', {
               property,
               tokenCount: safeTokenCount,
-              walletAddress: (globalThis as any)?.userWalletAddress || '',
             })
           }
           activeOpacity={0.9}
@@ -662,6 +745,13 @@ export const AssetDetails = ({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  centerLoader: { justifyContent: 'center', alignItems: 'center' },
+  loadingText: {
+    color: PALETTE.textMuted,
+    marginTop: 12,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   scrollContent: { flexGrow: 1, paddingBottom: 120 },
   heroImage: {
     width: '100%',

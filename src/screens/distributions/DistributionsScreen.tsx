@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,35 +9,34 @@ import {
   RefreshControl,
   Modal,
   Clipboard,
+  ActivityIndicator,
+  Alert,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, {
-  Path,
-  Rect,
-  Circle,
-  Defs,
-  LinearGradient,
-  Stop,
-} from 'react-native-svg';
-import { Colors } from '../../theme/colors';
+import { WebView } from 'react-native-webview';
+import Svg, { Path, Rect } from 'react-native-svg';
+import { ethers } from 'ethers';
 
 // --- TYPES & DATA CONTRACTS ---
-type DistributionStatus = 'Upcoming' | 'Processing' | 'Paid';
+type DistributionStatus = 'Upcoming' | 'Processing' | 'Paid' | 'Ready';
 
 interface DistributionItem {
   id: string;
+  batchId?: string;
   title: string;
   location: string;
   date: string;
-  rawDate: string; // for sorting/filtering
+  rawDate: string;
   amount: number;
   currency: string;
   status: DistributionStatus;
-  txHash: string;
+  distributionMode?: 'OFF_CHAIN' | 'ON_CHAIN';
+  txHash?: string;
   tokenStandard: string;
   yieldRate: string;
   assetType: string;
+  contractAddress?: string;
 }
 
 const DISTRIBUTION_TABS: readonly DistributionStatus[] = [
@@ -46,53 +45,8 @@ const DISTRIBUTION_TABS: readonly DistributionStatus[] = [
   'Paid',
 ];
 
-const MOCK_DISTRIBUTIONS: DistributionItem[] = [
-  {
-    id: '1',
-    title: 'Dubai Creek Residence',
-    location: 'Downtown Dubai, UAE',
-    date: 'Q2 2026 • Apr 30, 2026',
-    rawDate: '2026-04-30',
-    amount: 85.0,
-    currency: 'USD',
-    status: 'Upcoming',
-    txHash: '0x8f3c7a2b19e4d5f6871092a34b12c98d',
-    tokenStandard: 'ERC-3643 (RWA Token)',
-    yieldRate: '8.4% APY',
-    assetType: 'Prime Real Estate',
-  },
-  {
-    id: '2',
-    title: 'Riyadh Business Tower',
-    location: 'King Fahd Road, Riyadh',
-    date: 'Q1 2026 • Mar 15, 2026',
-    rawDate: '2026-03-15',
-    amount: 120.0,
-    currency: 'USD',
-    status: 'Paid',
-    txHash: '0x3d2a1b4c9e817f6a5b4c3d2e1f098a7b',
-    tokenStandard: 'ERC-3643 (RWA Token)',
-    yieldRate: '9.1% APY',
-    assetType: 'Commercial Grade A',
-  },
-  {
-    id: '3',
-    title: 'London City Apartments',
-    location: 'Canary Wharf, London',
-    date: 'Q1 2026 • Mar 10, 2026',
-    rawDate: '2026-03-10',
-    amount: 65.0,
-    currency: 'USD',
-    status: 'Paid',
-    txHash: '0x7c9b4a1f44e3d2c1b0a9f8e7d6c5b4a3',
-    tokenStandard: 'ERC-3643 (RWA Token)',
-    yieldRate: '7.8% APY',
-    assetType: 'Residential Multi-Family',
-  },
-];
-
-// --- PRECISION FINTECH SVG VECTOR ICONS ---
-const ArrowLeftIcon = ({ size = 20, color = Colors.white }) => (
+// --- SVG VECTOR ICONS ---
+const ArrowLeftIcon = ({ size = 20, color = '#F0FDF4' }) => (
   <Svg
     width={size}
     height={size}
@@ -107,7 +61,7 @@ const ArrowLeftIcon = ({ size = 20, color = Colors.white }) => (
   </Svg>
 );
 
-const BuildingIcon = ({ size = 20, color = Colors.accent }) => (
+const BuildingIcon = ({ size = 20, color = '#34D399' }) => (
   <Svg
     width={size}
     height={size}
@@ -123,7 +77,7 @@ const BuildingIcon = ({ size = 20, color = Colors.accent }) => (
   </Svg>
 );
 
-const EmptyVaultIcon = ({ size = 48, color = '#475569' }) => (
+const EmptyVaultIcon = ({ size = 48, color = '#64748B' }) => (
   <Svg
     width={size}
     height={size}
@@ -170,7 +124,7 @@ const TrendingUpIcon = ({ size = 16, color = '#34D399' }) => (
   </Svg>
 );
 
-const CloseIcon = ({ size = 18, color = Colors.white }) => (
+const CloseIcon = ({ size = 18, color = '#F0FDF4' }) => (
   <Svg
     width={size}
     height={size}
@@ -185,7 +139,7 @@ const CloseIcon = ({ size = 18, color = Colors.white }) => (
   </Svg>
 );
 
-const CopyIcon = ({ size = 15, color = Colors.accent }) => (
+const CopyIcon = ({ size = 15, color = '#34D399' }) => (
   <Svg
     width={size}
     height={size}
@@ -219,6 +173,8 @@ const CheckCircleIcon = ({ size = 15, color = '#34D399' }) => (
 
 export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const [distributions, setDistributions] = useState<DistributionItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [selectedTab, setSelectedTab] =
     useState<DistributionStatus>('Upcoming');
   const [refreshing, setRefreshing] = useState(false);
@@ -228,34 +184,122 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Pull-to-refresh handler simulating secure ledger state synchronization
+  // WebView Claim Flow State
+  const [webViewModalVisible, setWebViewModalVisible] = useState(false);
+  const [claimUrl, setClaimUrl] = useState<string>('');
+  const [isCheckingClaim, setIsCheckingClaim] = useState<boolean>(false);
+
+  // Preference states
+  const [distributionMode, setDistributionMode] = useState<
+    'OFF_CHAIN' | 'ON_CHAIN'
+  >('OFF_CHAIN');
+  const [tempMode, setTempMode] = useState<'OFF_CHAIN' | 'ON_CHAIN'>(
+    'OFF_CHAIN',
+  );
+  const [isSavingPref, setIsSavingPref] = useState(false);
+
+  const API_BASE_URL =
+    Platform.OS === 'android'
+      ? 'http://10.0.2.2:4000/api'
+      : 'http://localhost:4000/api';
+  const WEB_APP_BASE_URL =
+    Platform.OS === 'android'
+      ? 'http://10.0.2.2:3000'
+      : 'http://localhost:3000';
+
+  const fetchDistributionsData = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(
+        `${API_BASE_URL}/distributions/my-distributions`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        },
+      );
+
+      if (!res.ok) throw new Error('Failed to fetch distribution feeds');
+      const data = await res.json();
+
+      const mappedItems: DistributionItem[] = (data || []).map((item: any) => ({
+        id: item.id,
+        batchId: item.batchId,
+        title: item.asset?.title || 'Tokenized RWA Asset',
+        location: item.asset?.location || 'Verified Location',
+        date: new Date(item.period || item.createdAt).toLocaleDateString(
+          'en-US',
+          {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          },
+        ),
+        rawDate: item.period || item.createdAt,
+        amount: Number(item.amount || 0),
+        currency: 'USD',
+        status:
+          item.status === 'PAID'
+            ? 'Paid'
+            : item.status === 'READY'
+            ? 'Ready'
+            : 'Upcoming',
+        distributionMode: item.distributionMode,
+        txHash: item.txHash,
+        tokenStandard: item.asset?.tokenStandard || 'ERC-3643 (RWA Token)',
+        yieldRate: item.asset?.yieldRate || '8.0% APY',
+        assetType: item.asset?.assetType || 'Prime Real Estate',
+        contractAddress: item.asset?.contractAddress || item.contractAddress,
+      }));
+
+      setDistributions(mappedItems);
+    } catch (err) {
+      console.error(err);
+      setDistributions([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDistributionsData();
+  }, []);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    fetchDistributionsData();
   }, []);
 
-  // Compute metrics dynamically from data
   const totalDistributed = useMemo(() => {
-    return MOCK_DISTRIBUTIONS.filter(item => item.status === 'Paid').reduce(
-      (acc, curr) => acc + curr.amount,
-      0,
-    );
-  }, []);
+    return distributions
+      .filter(i => i.status === 'Paid')
+      .reduce((acc, curr) => acc + curr.amount, 0);
+  }, [distributions]);
 
-  const counts = useMemo(() => {
-    return {
-      Upcoming: MOCK_DISTRIBUTIONS.filter(i => i.status === 'Upcoming').length,
-      Processing: MOCK_DISTRIBUTIONS.filter(i => i.status === 'Processing')
-        .length,
-      Paid: MOCK_DISTRIBUTIONS.filter(i => i.status === 'Paid').length,
-    };
-  }, []);
+  const counts = useMemo(
+    () => ({
+      Upcoming: distributions.filter(
+        i => i.status === 'Upcoming' || i.status === 'Ready',
+      ).length,
+      Processing: distributions.filter(i => i.status === 'Processing').length,
+      Paid: distributions.filter(i => i.status === 'Paid').length,
+    }),
+    [distributions],
+  );
 
   const filteredDistributions = useMemo(() => {
-    return MOCK_DISTRIBUTIONS.filter(item => item.status === selectedTab);
-  }, [selectedTab]);
+    let list = [];
+    if (selectedTab === 'Upcoming') {
+      list = distributions.filter(
+        item => item.status === 'Upcoming' || item.status === 'Ready',
+      );
+      list.sort((a, b) => (a.status === 'Ready' ? -1 : 1));
+    } else {
+      list = distributions.filter(item => item.status === selectedTab);
+    }
+    return list;
+  }, [selectedTab, distributions]);
 
   const handleOpenReceipt = (item: DistributionItem) => {
     setSelectedItem(item);
@@ -263,26 +307,208 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
     setCopied(false);
   };
 
-  const handleCopyHash = (hash: string) => {
+  const handleCopyHash = (hash?: string) => {
+    if (!hash) return;
     Clipboard.setString(hash);
     setCopied(true);
     setTimeout(() => setCopied(false), 2400);
+  };
+
+  const handleDistributionModeChange = async (
+    newMode: 'OFF_CHAIN' | 'ON_CHAIN',
+  ) => {
+    if (isSavingPref) return;
+    setIsSavingPref(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/investors/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ distributionMode: newMode }),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to update preference');
+      setDistributionMode(newMode);
+      Alert.alert(
+        'Success',
+        'Yield distribution preference updated successfully!',
+      );
+    } catch (err) {
+      Alert.alert('Error', 'Failed to update preference. Please try again.');
+    } finally {
+      setIsSavingPref(false);
+    }
+  };
+
+  // 🛡️ DYNAMIC "CHECK" PROCESS: Verifies claim status before moving to WebView sign portal
+  const handleOpenWebViewClaim = async (item: DistributionItem) => {
+    if (!item.batchId) {
+      Alert.alert('Error', 'Missing Batch ID for this distribution.');
+      return;
+    }
+
+    try {
+      setIsCheckingClaim(true);
+
+      const backendUrl =
+        Platform.OS === 'android'
+          ? 'http://10.0.2.2:4000/api'
+          : 'http://localhost:4000/api';
+
+      const proofUrl = `${backendUrl}/distributions/proof/${encodeURIComponent(
+        item.batchId,
+      )}`;
+      const res = await fetch(proofUrl);
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch distribution proof from server.`);
+      }
+
+      const proofPayload = await res.json();
+
+      const targetContractAddress =
+        process.env.EXPO_PUBLIC_YIELD_NOTARY_ADDRESS ||
+        '0x9A676e781A523b5d0C0e43731313A708CB607508';
+
+      // Verify on-chain claim status using an RPC provider and contract mapping check
+      const providerUrl =
+        Platform.OS === 'android'
+          ? 'http://10.0.2.2:8545'
+          : 'http://localhost:8545';
+      const provider = new ethers.JsonRpcProvider(providerUrl);
+      const notaryContract = new ethers.Contract(
+        targetContractAddress,
+        [
+          'function isClaimed(bytes32 _batchId, address _account) view returns (bool)',
+        ],
+        provider,
+      );
+
+      const cleanBatchIdStr = String(proofPayload.batchId).trim();
+      const encodedBatchId =
+        cleanBatchIdStr.startsWith('0x') && cleanBatchIdStr.length === 66
+          ? cleanBatchIdStr
+          : ethers.id(cleanBatchIdStr);
+
+      const targetAccount = ethers.getAddress(
+        String(proofPayload.account).trim(),
+      );
+
+      // 🔍 The Check Phase
+      let alreadyClaimed = false;
+      try {
+        alreadyClaimed = await notaryContract.isClaimed(
+          encodedBatchId,
+          targetAccount,
+        );
+      } catch (checkErr) {
+        console.warn(
+          'On-chain isClaimed verification check skipped:',
+          checkErr,
+        );
+      }
+
+      if (alreadyClaimed || proofPayload.status === 'PAID') {
+        // If already claimed, instantly update state to Paid and block re-entry
+        setDistributions(prev =>
+          prev.map(d => (d.id === item.id ? { ...d, status: 'Paid' } : d)),
+        );
+        setModalVisible(false);
+        Alert.alert(
+          'Notice',
+          'Yield for this distribution has already been claimed.',
+        );
+        return;
+      }
+
+      // Proceed to encode and open sign portal if not claimed
+      const iface = new ethers.Interface([
+        'function claimYield(bytes32 _batchId, address _account, uint256 _amount, bytes32[] calldata _merkleProof)',
+      ]);
+
+      const targetAmountWei = String(proofPayload.amount).trim();
+      const targetProof = Array.isArray(proofPayload.proof)
+        ? proofPayload.proof
+        : [];
+
+      const callData = iface.encodeFunctionData('claimYield', [
+        encodedBatchId,
+        targetAccount,
+        targetAmountWei,
+        targetProof,
+      ]);
+
+      const txPayload = {
+        to: targetContractAddress,
+        data: callData,
+        value: '0x0',
+        chainId: 31337,
+      };
+
+      const encodedPayload = encodeURIComponent(JSON.stringify({ txPayload }));
+
+      const targetClaimUrl = `${WEB_APP_BASE_URL}/investor/sign?claimId=${encodeURIComponent(
+        item.batchId,
+      )}&payload=${encodedPayload}&contractAddress=${encodeURIComponent(
+        targetContractAddress,
+      )}`;
+
+      setClaimUrl(targetClaimUrl);
+      setModalVisible(false);
+      setWebViewModalVisible(true);
+    } catch (err: any) {
+      Alert.alert(
+        'Claim Error',
+        err.message || 'Could not prepare claim payload.',
+      );
+    } finally {
+      setIsCheckingClaim(false);
+    }
+  };
+
+  const handleWebViewMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (
+        data.type === 'CLAIM_SUCCESS' ||
+        data.type === 'TRANSACTION_COMPLETE' ||
+        data.type === 'SIGN_SUCCESS'
+      ) {
+        setWebViewModalVisible(false);
+
+        if (selectedItem) {
+          setDistributions(prev =>
+            prev.map(d =>
+              d.id === selectedItem.id ? { ...d, status: 'Paid' } : d,
+            ),
+          );
+        }
+
+        Alert.alert(
+          'Success',
+          'On-chain yield claim & signature verified successfully!',
+        );
+        fetchDistributionsData();
+      } else if (data.type === 'CLOSE_MODAL') {
+        setWebViewModalVisible(false);
+        fetchDistributionsData();
+      }
+    } catch (err) {
+      console.error('Failed to parse WebView message:', err);
+    }
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* Institutional Top App Bar */}
+      {/* App Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
           activeOpacity={0.75}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
         >
-          <ArrowLeftIcon size={18} color={Colors.white} />
+          <ArrowLeftIcon size={18} color="#F0FDF4" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Yield & Distributions</Text>
         <View style={styles.headerSpacer} />
@@ -295,19 +521,19 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.accent}
-            colors={[Colors.accent]}
+            tintColor="#34D399"
+            colors={['#34D399']}
           />
         }
       >
-        {/* World-Class Institutional Portfolio Summary Vault Card */}
+        {/* Portfolio Vault Summary Card */}
         <View style={styles.vaultCard}>
           <View style={styles.vaultCardGlowTop} />
           <View style={styles.vaultHeaderRow}>
             <Text style={styles.vaultLabel}>Total Realized Yield Payouts</Text>
             <View style={styles.growthBadge}>
               <TrendingUpIcon size={12} color="#34D399" />
-              <Text style={styles.growthText}>+14.2% YoY</Text>
+              <Text style={styles.growthText}>Live Sync</Text>
             </View>
           </View>
           <Text style={styles.vaultAmount}>
@@ -316,26 +542,80 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
               minimumFractionDigits: 2,
             })}
           </Text>
-
           <View style={styles.vaultDivider} />
-
           <View style={styles.vaultMetaGrid}>
             <View>
-              <Text style={styles.vaultMetaLabel}>Next Smart Payout</Text>
-              <Text style={styles.vaultMetaValue}>Apr 30, 2026</Text>
+              <Text style={styles.vaultMetaLabel}>Active Records</Text>
+              <Text style={styles.vaultMetaValue}>
+                {distributions.length} Total
+              </Text>
             </View>
             <View style={styles.vaultMetaAlignRight}>
-              <Text style={styles.vaultMetaLabel}>Active Tokenized RWA</Text>
-              <Text style={styles.vaultMetaValue}>3 Properties</Text>
+              <Text style={styles.vaultMetaLabel}>Protocol Sync Status</Text>
+              <Text style={[styles.vaultMetaValue, { color: '#34D399' }]}>
+                Connected
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* Dynamic Segmented Navigation Tabs */}
+        {/* Preference Card */}
+        <View style={styles.prefCard}>
+          <Text style={styles.prefCardTitle}>Yield Payout Preference</Text>
+          <Text style={styles.prefCardSubtitle}>
+            Choose how you would like to receive your monthly property
+            dividends.
+          </Text>
+          <View style={styles.prefOptionsRow}>
+            <TouchableOpacity
+              style={[
+                styles.prefOptionButton,
+                tempMode === 'OFF_CHAIN' && styles.prefOptionButtonSelected,
+              ]}
+              onPress={() => setTempMode('OFF_CHAIN')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.prefOptionTitle}>🌐 Off-Chain (Balance)</Text>
+              <Text style={styles.prefOptionDesc}>
+                Zero gas fees. Instant credit.
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.prefOptionButton,
+                tempMode === 'ON_CHAIN' && styles.prefOptionButtonSelected,
+              ]}
+              onPress={() => setTempMode('ON_CHAIN')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.prefOptionTitle}>⛓️ On-Chain (Web3)</Text>
+              <Text style={styles.prefOptionDesc}>
+                Trustless claim to wallet.
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.prefSaveButton,
+              (isSavingPref || tempMode === distributionMode) &&
+                styles.prefSaveButtonDisabled,
+            ]}
+            disabled={isSavingPref || tempMode === distributionMode}
+            onPress={() => handleDistributionModeChange(tempMode)}
+            activeOpacity={0.85}
+          >
+            {isSavingPref ? (
+              <ActivityIndicator color="#080C0A" size="small" />
+            ) : (
+              <Text style={styles.prefSaveButtonText}>Save Preference</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Tabs */}
         <View style={styles.segmentContainer}>
           {DISTRIBUTION_TABS.map(tab => {
             const isActive = selectedTab === tab;
-            const count = counts[tab];
             return (
               <TouchableOpacity
                 key={tab}
@@ -352,30 +632,23 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                     isActive && styles.segmentTextActive,
                   ]}
                 >
-                  {tab} ({count})
+                  {tab} ({counts[tab]})
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Distribution Card Rows */}
-        {filteredDistributions.length > 0 ? (
+        {/* List */}
+        {loading && !refreshing ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color="#34D399" />
+          </View>
+        ) : filteredDistributions.length > 0 ? (
           <View style={styles.cardListContainer}>
             {filteredDistributions.map(item => {
               const isPaid = item.status === 'Paid';
-              const isProcessing = item.status === 'Processing';
-              const badgeBg = isPaid
-                ? 'rgba(52, 211, 153, 0.12)'
-                : isProcessing
-                ? 'rgba(59, 130, 246, 0.12)'
-                : 'rgba(251, 191, 36, 0.12)';
-              const badgeColor = isPaid
-                ? '#34D399'
-                : isProcessing
-                ? '#60A5FA'
-                : '#FBBF24';
-
+              const isReady = item.status === 'Ready';
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -384,9 +657,8 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                   onPress={() => handleOpenReceipt(item)}
                 >
                   <View style={styles.distributionIconBox}>
-                    <BuildingIcon size={20} color={Colors.accent} />
+                    <BuildingIcon size={20} color="#34D399" />
                   </View>
-
                   <View style={styles.distributionDetails}>
                     <Text
                       style={styles.distributionCardTitle}
@@ -396,10 +668,13 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                     </Text>
                     <Text style={styles.distributionCardDate}>{item.date}</Text>
                     <Text style={styles.distributionSmartTag}>
-                      Smart Contract Yield
+                      {isPaid
+                        ? '✓ Yield Claimed & Paid'
+                        : isReady
+                        ? '⚡ Ready to Sign & Claim'
+                        : 'Automated Platform Credit'}
                     </Text>
                   </View>
-
                   <View style={styles.distributionActionCol}>
                     <Text style={styles.distributionCardAmount}>
                       ${item.amount.toFixed(2)}
@@ -408,13 +683,25 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                       <View
                         style={[
                           styles.statusBadge,
-                          { backgroundColor: badgeBg },
+                          {
+                            backgroundColor: isPaid
+                              ? 'rgba(52, 211, 153, 0.12)'
+                              : isReady
+                              ? 'rgba(245, 158, 11, 0.12)'
+                              : 'rgba(59, 130, 246, 0.12)',
+                          },
                         ]}
                       >
                         <Text
                           style={[
                             styles.statusBadgeText,
-                            { color: badgeColor },
+                            {
+                              color: isPaid
+                                ? '#34D399'
+                                : isReady
+                                ? '#F59E0B'
+                                : '#60A5FA',
+                            },
                           ]}
                         >
                           {item.status}
@@ -434,14 +721,14 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
             </View>
             <Text style={styles.emptyTitle}>No Distributions Found</Text>
             <Text style={styles.emptySubtitle}>
-              You have no {selectedTab.toLowerCase()} distributions matching
-              your institutional portfolio parameters.
+              You have no active {selectedTab.toLowerCase()} distributions
+              matching your criteria.
             </Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Interactive Smart Contract Transaction Receipt Modal */}
+      {/* Receipt & Action Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -458,7 +745,7 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                 onPress={() => setModalVisible(false)}
                 activeOpacity={0.7}
               >
-                <CloseIcon size={16} color={Colors.white} />
+                <CloseIcon size={16} color="#F0FDF4" />
               </TouchableOpacity>
             </View>
 
@@ -467,10 +754,9 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.modalScrollBody}
               >
-                {/* Hero Receipt Card */}
                 <View style={styles.receiptHeroCard}>
                   <View style={styles.receiptHeroIconCircle}>
-                    <BuildingIcon size={26} color={Colors.accent} />
+                    <BuildingIcon size={26} color="#34D399" />
                   </View>
                   <Text style={styles.receiptAssetTitle}>
                     {selectedItem.title}
@@ -478,19 +764,16 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                   <Text style={styles.receiptLocation}>
                     {selectedItem.location}
                   </Text>
-
                   <Text style={styles.receiptAmountDisplay}>
                     ${selectedItem.amount.toFixed(2)}
                   </Text>
-
                   <View style={styles.receiptStatusPill}>
                     <Text style={styles.receiptStatusPillText}>
-                      {selectedItem.status} • Verified Execution
+                      Verified Execution
                     </Text>
                   </View>
                 </View>
 
-                {/* Technical Ledger Parameter Breakdown */}
                 <View style={styles.ledgerInfoCard}>
                   <View style={styles.ledgerRow}>
                     <Text style={styles.ledgerKey}>Asset Class</Text>
@@ -499,60 +782,98 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                     </Text>
                   </View>
                   <View style={styles.ledgerDivider} />
-
                   <View style={styles.ledgerRow}>
                     <Text style={styles.ledgerKey}>Distribution Cycle</Text>
-                    <Text style={styles.ledgerVal}>
-                      {selectedItem.date.split('•')[0].trim()}
-                    </Text>
+                    <Text style={styles.ledgerVal}>{selectedItem.date}</Text>
                   </View>
                   <View style={styles.ledgerDivider} />
-
                   <View style={styles.ledgerRow}>
-                    <Text style={styles.ledgerKey}>Tokenization Standard</Text>
+                    <Text style={styles.ledgerKey}>Token Standard</Text>
                     <Text style={styles.ledgerVal}>
                       {selectedItem.tokenStandard}
                     </Text>
                   </View>
                   <View style={styles.ledgerDivider} />
-
                   <View style={styles.ledgerRow}>
-                    <Text style={styles.ledgerKey}>Underlying Yield Rate</Text>
+                    <Text style={styles.ledgerKey}>Yield Rate</Text>
                     <Text style={[styles.ledgerVal, { color: '#34D399' }]}>
                       {selectedItem.yieldRate}
                     </Text>
                   </View>
-                  <View style={styles.ledgerDivider} />
+                  {selectedItem.contractAddress && (
+                    <>
+                      <View style={styles.ledgerDivider} />
+                      <View style={styles.ledgerRow}>
+                        <Text style={styles.ledgerKey}>Contract Address</Text>
+                        <Text
+                          style={[styles.ledgerVal, { fontSize: 10.5 }]}
+                          numberOfLines={1}
+                          ellipsizeMode="middle"
+                        >
+                          {selectedItem.contractAddress}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                  {selectedItem.txHash && (
+                    <>
+                      <View style={styles.ledgerDivider} />
+                      <View style={styles.ledgerColumn}>
+                        <Text style={styles.ledgerKey}>
+                          On-Chain Transaction Hash
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.hashContainer}
+                          onPress={() => handleCopyHash(selectedItem.txHash)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={styles.hashText}
+                            numberOfLines={1}
+                            ellipsizeMode="middle"
+                          >
+                            {selectedItem.txHash}
+                          </Text>
+                          {copied ? (
+                            <CheckCircleIcon size={14} color="#34D399" />
+                          ) : (
+                            <CopyIcon size={14} color="#34D399" />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
 
-                  <View style={styles.ledgerColumn}>
-                    <Text style={styles.ledgerKey}>
-                      On-Chain Transaction Hash
-                    </Text>
+                {selectedItem.distributionMode === 'ON_CHAIN' &&
+                  selectedItem.status !== 'Paid' && (
                     <TouchableOpacity
-                      style={styles.hashContainer}
-                      onPress={() => handleCopyHash(selectedItem.txHash)}
-                      activeOpacity={0.8}
+                      style={[
+                        styles.modalDoneButton,
+                        {
+                          backgroundColor: '#34D399',
+                          marginBottom: 12,
+                          borderColor: '#34D399',
+                        },
+                      ]}
+                      onPress={() => handleOpenWebViewClaim(selectedItem)}
+                      disabled={isCheckingClaim}
+                      activeOpacity={0.85}
                     >
-                      <Text
-                        style={styles.hashText}
-                        numberOfLines={1}
-                        ellipsizeMode="middle"
-                      >
-                        {selectedItem.txHash}
-                      </Text>
-                      {copied ? (
-                        <CheckCircleIcon size={14} color="#34D399" />
+                      {isCheckingClaim ? (
+                        <ActivityIndicator color="#080C0A" size="small" />
                       ) : (
-                        <CopyIcon size={14} color={Colors.accent} />
+                        <Text
+                          style={[
+                            styles.modalDoneButtonText,
+                            { color: '#080C0A' },
+                          ]}
+                        >
+                          Sign & Claim via Web Portal 🔗
+                        </Text>
                       )}
                     </TouchableOpacity>
-                    {copied && (
-                      <Text style={styles.copyFeedbackText}>
-                        Copied transaction hash to clipboard
-                      </Text>
-                    )}
-                  </View>
-                </View>
+                  )}
 
                 <TouchableOpacity
                   style={styles.modalDoneButton}
@@ -566,21 +887,88 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
           </View>
         </View>
       </Modal>
+
+      {/* WebView Modal */}
+      {/* WebView Modal */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={webViewModalVisible}
+        onRequestClose={() => setWebViewModalVisible(false)}
+      >
+        <View style={[styles.webViewContainer, { paddingTop: insets.top }]}>
+          <View style={styles.webViewHeader}>
+            <Text style={styles.webViewTitle}>
+              Secure Signature & Claim Portal
+            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setWebViewModalVisible(false);
+                fetchDistributionsData();
+              }}
+              activeOpacity={0.7}
+            >
+              <CloseIcon size={16} color="#F0FDF4" />
+            </TouchableOpacity>
+          </View>
+          <WebView
+            source={{ uri: claimUrl }}
+            startInLoadingState={true}
+            renderLoading={() => (
+              <View style={styles.webViewLoader}>
+                <ActivityIndicator size="large" color="#34D399" />
+              </View>
+            )}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            sharedCookiesEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            scrollEnabled={true}
+            bounces={false}
+            setSupportMultipleWindows={false}
+            originWhitelist={[
+              'https://*',
+              'http://*',
+              'http://localhost:*',
+              'http://10.0.2.2:*',
+            ]}
+            style={styles.webView}
+            containerStyle={styles.webView}
+            onMessage={handleWebViewMessage}
+            injectedJavaScript={`
+              (function() {
+                window.notifyReactNative = function(type, payload) {
+                  if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({ type, payload }));
+                  }
+                };
+              })();
+              true;
+            `}
+            onError={event =>
+              Alert.alert(
+                'Connection Error',
+                `Unable to load sign portal: ${
+                  event.nativeEvent.description || 'Connection refused'
+                }`,
+              )
+            }
+          />
+        </View>
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#080C0A',
-  },
+  container: { flex: 1, backgroundColor: '#080C0A' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    height: 58,
+    height: 30,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(16, 185, 129, 0.08)',
     backgroundColor: '#080C0A',
@@ -603,14 +991,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flex: 1,
   },
-  headerSpacer: {
-    width: 38,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 48,
-  },
+  headerSpacer: { width: 38 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 48 },
   vaultCard: {
     backgroundColor: '#111816',
     borderRadius: 20,
@@ -620,11 +1002,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     position: 'relative',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
   },
   vaultCardGlowTop: {
     position: 'absolute',
@@ -641,12 +1018,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  vaultLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
+  vaultLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
   growthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -656,52 +1028,86 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     gap: 4,
     borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.25)',
+    borderColor: 'rgba(52, 211, 153, 0.2)',
   },
-  growthText: {
-    color: '#34D399',
-    fontSize: 10.5,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
+  growthText: { color: '#34D399', fontSize: 11, fontWeight: '700' },
   vaultAmount: {
     color: '#F0FDF4',
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: '800',
-    letterSpacing: -0.6,
+    letterSpacing: 0.5,
     marginBottom: 16,
   },
   vaultDivider: {
     height: 1,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    marginBottom: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 14,
   },
   vaultMetaGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  vaultMetaLabel: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '500',
-    marginBottom: 2,
+  vaultMetaLabel: { color: '#64748B', fontSize: 11, marginBottom: 2 },
+  vaultMetaValue: { color: '#F0FDF4', fontSize: 13, fontWeight: '700' },
+  vaultMetaAlignRight: { alignItems: 'flex-end' },
+  prefCard: {
+    backgroundColor: '#111816',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.15)',
+    marginBottom: 20,
   },
-  vaultMetaValue: {
+  prefCardTitle: {
     color: '#F0FDF4',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
+    marginBottom: 4,
   },
-  vaultMetaAlignRight: {
-    alignItems: 'flex-end',
+  prefCardSubtitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 14,
   },
+  prefOptionsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  prefOptionButton: {
+    flex: 1,
+    backgroundColor: '#080C0A',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  prefOptionButtonSelected: {
+    borderColor: '#34D399',
+    backgroundColor: 'rgba(52, 211, 153, 0.06)',
+  },
+  prefOptionTitle: {
+    color: '#F0FDF4',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  prefOptionDesc: { color: '#64748B', fontSize: 10, lineHeight: 13 },
+  prefSaveButton: {
+    backgroundColor: '#34D399',
+    borderRadius: 12,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  prefSaveButtonDisabled: { opacity: 0.5 },
+  prefSaveButtonText: { color: '#080C0A', fontSize: 13, fontWeight: '700' },
   segmentContainer: {
     flexDirection: 'row',
     backgroundColor: '#111816',
     borderRadius: 14,
     padding: 4,
-    marginBottom: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   segmentButton: {
     flex: 1,
@@ -709,134 +1115,89 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 10,
   },
-  segmentButtonActive: {
-    backgroundColor: '#34D399',
-    shadowColor: '#34D399',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  segmentText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  segmentTextActive: {
-    color: '#080C0A',
-    fontWeight: '800',
-  },
-  cardListContainer: {
-    gap: 12,
-  },
+  segmentButtonActive: { backgroundColor: '#34D399' },
+  segmentText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  segmentTextActive: { color: '#080C0A', fontWeight: '700' },
+  cardListContainer: { gap: 12 },
   distributionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#111816',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.15)',
-    gap: 12,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   distributionIconBox: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 12,
-    backgroundColor: '#082017',
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    marginRight: 12,
   },
-  distributionDetails: {
-    flex: 1,
-  },
+  distributionDetails: { flex: 1, marginRight: 10 },
   distributionCardTitle: {
     color: '#F0FDF4',
     fontSize: 14,
     fontWeight: '700',
     marginBottom: 2,
   },
-  distributionCardDate: {
-    color: '#94A3B8',
-    fontSize: 11.5,
-    marginBottom: 4,
-  },
-  distributionSmartTag: {
-    color: '#34D399',
-    fontSize: 10.5,
-    fontWeight: '600',
-    opacity: 0.9,
-  },
-  distributionActionCol: {
-    alignItems: 'flex-end',
-  },
+  distributionCardDate: { color: '#94A3B8', fontSize: 11, marginBottom: 4 },
+  distributionSmartTag: { color: '#34D399', fontSize: 10, fontWeight: '600' },
+  distributionActionCol: { alignItems: 'flex-end' },
   distributionCardAmount: {
+    color: '#F0FDF4',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusBadgeText: { fontSize: 10, fontWeight: '700' },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#111816',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  emptyTitle: {
     color: '#F0FDF4',
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 6,
   },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  emptyContainer: {
-    paddingVertical: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  emptyIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#111816',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.15)',
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    color: '#F0FDF4',
-    fontSize: 16,
-    fontWeight: '700',
-  },
   emptySubtitle: {
-    color: '#94A3B8',
-    fontSize: 12.5,
+    color: '#64748B',
+    fontSize: 12,
     textAlign: 'center',
-    paddingHorizontal: 32,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    backgroundColor: '#080C0A',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    paddingBottom: 36,
+    backgroundColor: '#111816',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    maxHeight: '85%',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
-    maxHeight: '90%',
+    borderColor: 'rgba(16, 185, 129, 0.2)',
   },
   modalHandleBar: {
     width: 36,
@@ -844,159 +1205,133 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#334155',
     alignSelf: 'center',
-    marginBottom: 12,
+    marginTop: 10,
+    marginBottom: 16,
   },
   modalHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 18,
-  },
-  modalTitle: {
-    color: '#F0FDF4',
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  modalCloseButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#111816',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)',
-  },
-  modalScrollBody: {
-    paddingBottom: 10,
-  },
-  receiptHeroCard: {
-    alignItems: 'center',
-    backgroundColor: '#111816',
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)',
     marginBottom: 16,
   },
-  receiptHeroIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#082017',
+  modalTitle: { color: '#F0FDF4', fontSize: 16, fontWeight: '700' },
+  modalCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#080C0A',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.35)',
-    marginBottom: 12,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  modalScrollBody: { paddingBottom: 20 },
+  receiptHeroCard: {
+    backgroundColor: '#080C0A',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  receiptHeroIconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   receiptAssetTitle: {
     color: '#F0FDF4',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
+    textAlign: 'center',
     marginBottom: 2,
-    textAlign: 'center',
   },
-  receiptLocation: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
+  receiptLocation: { color: '#94A3B8', fontSize: 11, marginBottom: 12 },
   receiptAmountDisplay: {
-    color: '#F0FDF4',
-    fontSize: 34,
+    color: '#34D399',
+    fontSize: 28,
     fontWeight: '800',
-    letterSpacing: -0.5,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   receiptStatusPill: {
     backgroundColor: 'rgba(52, 211, 153, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  receiptStatusPillText: {
-    color: '#34D399',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
+  receiptStatusPillText: { color: '#34D399', fontSize: 11, fontWeight: '700' },
   ledgerInfoCard: {
-    backgroundColor: '#111816',
+    backgroundColor: '#080C0A',
     borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.15)',
+    padding: 16,
     marginBottom: 20,
-    gap: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   ledgerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 6,
   },
-  ledgerColumn: {
-    gap: 8,
-  },
-  ledgerKey: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '500',
-  },
+  ledgerColumn: { paddingVertical: 6 },
+  ledgerKey: { color: '#94A3B8', fontSize: 12 },
   ledgerVal: {
     color: '#F0FDF4',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: '60%',
+    textAlign: 'right',
   },
-  ledgerDivider: {
-    height: 1,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-  },
+  ledgerDivider: { height: 1, backgroundColor: 'rgba(255, 255, 255, 0.04)' },
   hashContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#111816',
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 6,
     justifyContent: 'space-between',
-    backgroundColor: '#080C0A',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)',
-    gap: 8,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
-  hashText: {
-    color: '#94A3B8',
-    fontSize: 11.5,
-    flex: 1,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  copyFeedbackText: {
-    color: '#34D399',
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
+  hashText: { color: '#34D399', fontSize: 11, flex: 1, marginRight: 8 },
   modalDoneButton: {
-    backgroundColor: '#34D399',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
+    backgroundColor: '#111816',
+    borderRadius: 12,
+    height: 48,
     justifyContent: 'center',
-    shadowColor: '#34D399',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
-  modalDoneButtonText: {
-    color: '#080C0A',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+  modalDoneButtonText: { color: '#F0FDF4', fontSize: 13, fontWeight: '700' },
+  webViewContainer: { flex: 1, backgroundColor: '#080C0A' },
+  webViewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    height: 58,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(16, 185, 129, 0.08)',
+    backgroundColor: '#080C0A',
+  },
+  webViewTitle: { color: '#F0FDF4', fontSize: 15, fontWeight: '700' },
+  webView: { flex: 1, backgroundColor: '#080C0A' },
+  webViewLoader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#080C0A',
   },
 });

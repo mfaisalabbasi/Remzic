@@ -26,43 +26,17 @@ interface InvestmentProperty {
   id?: string;
   assetId?: string;
   title?: string;
-  tokenPrice?: number | string;
   unitPrice?: number | string;
-  minInvestmentValue?: number | string;
+  expectedYield?: number | string;
   yield?: number | string;
   yieldRate?: number | string;
   availableShares?: number | string;
+  tokenSupply?: number | string;
 }
 
 interface InvestmentRouteParams {
   property?: InvestmentProperty;
   tokenCount?: number;
-}
-
-interface Web3TransactionPayload {
-  to: string;
-  data?: string;
-  value?: string;
-  chainId?: number | string;
-}
-
-interface InvestmentIntentResponse {
-  success?: boolean;
-  investmentId: string;
-  txPayload: Web3TransactionPayload;
-  expectedWalletAddress?: string;
-}
-
-interface InvestmentCreateResponse {
-  id?: string;
-  investmentId?: string;
-  status?: string;
-  message?: string;
-}
-
-interface InvestmentStatusResponse {
-  status?: string;
-  message?: string;
 }
 
 interface WebViewBridgeMessage {
@@ -230,50 +204,63 @@ export const InvestmentFlowScreen = ({
   const assetId = rawProperty.id || rawProperty.assetId;
   const tokenCount = route?.params?.tokenCount;
 
-  const tokenPriceRaw = rawProperty.tokenPrice ?? rawProperty.unitPrice ?? 10;
-  const tokenPrice = Number(tokenPriceRaw);
+  // DB Alignment: unitPrice mapping
+  const unitPriceRaw = rawProperty.unitPrice ?? rawProperty.tokenPrice ?? 10;
+  const parsedUnitPrice = Number(unitPriceRaw);
+  const validUnitPrice =
+    Number.isFinite(parsedUnitPrice) && parsedUnitPrice > 0
+      ? parsedUnitPrice
+      : 10;
 
-  const minimumRaw = rawProperty.minInvestmentValue ?? tokenPrice;
-  const minimumInvestment = Number(minimumRaw);
-
-  const yieldRaw = rawProperty.yield ?? rawProperty.yieldRate ?? 8.5;
-
-  const yieldRate =
-    typeof yieldRaw === 'string'
-      ? parseFloat(yieldRaw.replace('%', '')) / 100
-      : Number(yieldRaw) > 1
-      ? Number(yieldRaw) / 100
-      : Number(yieldRaw);
+  // DB Alignment: expectedYield mapping
+  const yieldRaw =
+    rawProperty.expectedYield ??
+    rawProperty.yield ??
+    rawProperty.yieldRate ??
+    1.0;
+  const parsedYield = Number(yieldRaw);
+  const validYieldRate =
+    Number.isFinite(parsedYield) && parsedYield >= 0
+      ? parsedYield > 1
+        ? parsedYield / 100
+        : parsedYield
+      : 0.085;
 
   const property = {
-    title: rawProperty.title || 'Dubai Creek Harbour Residences',
-    tokenPrice: Number.isFinite(tokenPrice) && tokenPrice > 0 ? tokenPrice : 10,
-    minInvestment:
-      Number.isFinite(minimumInvestment) && minimumInvestment > 0
-        ? minimumInvestment
-        : Number.isFinite(tokenPrice) && tokenPrice > 0
-        ? tokenPrice
-        : 10,
-    yieldRate: Number.isFinite(yieldRate) && yieldRate >= 0 ? yieldRate : 0.085,
+    title: rawProperty.title || 'Jeddah Tower',
+    unitPrice: validUnitPrice,
+    minInvestment: validUnitPrice,
+    yieldRate: validYieldRate,
   };
 
+  // Safe initial amount that defaults to 1 full token price instead of 0
   const initialAmount =
     tokenCount && Number.isFinite(Number(tokenCount)) && Number(tokenCount) > 0
-      ? (Number(tokenCount) * property.tokenPrice).toString()
+      ? (Number(tokenCount) * property.unitPrice).toString()
       : property.minInvestment.toString();
 
   const [amount, setAmount] = useState(initialAmount);
 
-  const numericAmount = Number.parseFloat(amount) || 0;
+  // Fallback to minInvestment if input is empty or parsed as 0
+  const parsedNumericAmount = Number.parseFloat(amount);
+  const numericAmount =
+    Number.isFinite(parsedNumericAmount) && parsedNumericAmount > 0
+      ? parsedNumericAmount
+      : property.minInvestment;
 
   const estimatedTokens =
-    property.tokenPrice > 0
-      ? (numericAmount / property.tokenPrice).toFixed(2)
+    property.unitPrice > 0
+      ? (numericAmount / property.unitPrice).toFixed(2)
       : '0.00';
 
   const estimatedYieldAnnual = (numericAmount * property.yieldRate).toFixed(2);
 
-  const totalUnitsAvailable = rawProperty.availableShares ?? '12,500';
+  const rawAvailable =
+    rawProperty.availableShares ?? rawProperty.tokenSupply ?? 1000;
+  const parsedAvailable = Number(rawAvailable);
+  const totalUnitsAvailable = Number.isFinite(parsedAvailable)
+    ? parsedAvailable.toLocaleString()
+    : '1,000';
 
   const presetAmounts = [
     property.minInvestment,
@@ -299,15 +286,15 @@ export const InvestmentFlowScreen = ({
 
   useEffect(() => {
     const nextTokenCount = route?.params?.tokenCount;
-
-    setAmount(
+    const computedInitial =
       nextTokenCount &&
-        Number.isFinite(Number(nextTokenCount)) &&
-        Number(nextTokenCount) > 0
-        ? (Number(nextTokenCount) * property.tokenPrice).toString()
-        : property.minInvestment.toString(),
-    );
-  }, [route?.params?.tokenCount, property.minInvestment, property.tokenPrice]);
+      Number.isFinite(Number(nextTokenCount)) &&
+      Number(nextTokenCount) > 0
+        ? (Number(nextTokenCount) * property.unitPrice).toString()
+        : property.minInvestment.toString();
+
+    setAmount(computedInitial);
+  }, [route?.params?.tokenCount, property.minInvestment, property.unitPrice]);
 
   const setSafeFlowState = useCallback((state: FlowState) => {
     if (mountedRef.current) {
@@ -381,7 +368,7 @@ export const InvestmentFlowScreen = ({
         try {
           const response = (await investmentApi.getLiveStatus(
             investmentId,
-          )) as InvestmentStatusResponse;
+          )) as any;
 
           if (
             !mountedRef.current ||
@@ -390,18 +377,17 @@ export const InvestmentFlowScreen = ({
             return;
           }
 
-          // Extract status safely from any response variation
           const rawStatus =
             response?.status ||
-            (response as any)?.data?.status ||
-            (response as any)?.investment?.status;
+            response?.data?.status ||
+            response?.investment?.status;
 
           const status =
             typeof rawStatus === 'string' ? rawStatus.toUpperCase().trim() : '';
 
-          console.log(`Polling attempt ${attempt + 1}: Status = ${status}`);
-
-          if (['CONFIRMED', 'SUCCESS', 'COMPLETED'].includes(status)) {
+          if (
+            ['CONFIRMED', 'SUCCESS', 'COMPLETED', 'APPROVED'].includes(status)
+          ) {
             setSafeFlowState('CONFIRMED');
             setSafeStatus('Your investment has been confirmed by Remzik.');
             return;
@@ -440,6 +426,7 @@ export const InvestmentFlowScreen = ({
     },
     [setSafeFlowState, setSafeStatus],
   );
+
   const startOnChainInvestment = useCallback(async () => {
     setSafeStatus('Generating secure transaction intent from Remzik...');
 
@@ -502,7 +489,6 @@ export const InvestmentFlowScreen = ({
 
     investmentIdRef.current = intent.investmentId;
 
-    // Bundle both the approval payload and deposit transaction payload for the Next.js sign page
     const payloadData = {
       approvalPayload: intent.approvalPayload || null,
       txPayload: intent.txPayload,
@@ -512,14 +498,11 @@ export const InvestmentFlowScreen = ({
     };
 
     const payload = encodeURIComponent(JSON.stringify(payloadData));
-
     const expectedWallet = normalizeWalletAddress(intent.expectedWalletAddress);
-
     const walletParam = expectedWallet
       ? `&walletAddress=${encodeURIComponent(expectedWallet)}`
       : '';
 
-    // Added autoAuth=true to bypass the login modal inside the WebView
     const targetUrl =
       `${getNextJsHost()}/investor/sign` +
       `?payload=${payload}` +
@@ -547,6 +530,7 @@ export const InvestmentFlowScreen = ({
     setSafeStatus,
     startWebViewTimeout,
   ]);
+
   const startOffChainInvestment = useCallback(async () => {
     setSafeStatus('Validating and submitting internal balance allocation...');
 
@@ -554,9 +538,12 @@ export const InvestmentFlowScreen = ({
       assetId: assetId || '',
       amount: numericAmount,
       settlementMode: 'OFF_CHAIN' as const,
-    })) as InvestmentCreateResponse;
+    })) as any;
 
-    if (result?.status?.toUpperCase() === 'CONFIRMED') {
+    if (
+      result?.status?.toUpperCase() === 'CONFIRMED' ||
+      result?.status?.toUpperCase() === 'APPROVED'
+    ) {
       setSafeFlowState('CONFIRMED');
       setSafeStatus('Your investment has been confirmed.');
       return;
@@ -599,14 +586,6 @@ export const InvestmentFlowScreen = ({
       return;
     }
 
-    if (numericAmount < property.minInvestment) {
-      RNAlert.alert(
-        'Invalid Allocation',
-        `The minimum investment threshold for this asset is $${property.minInvestment}.`,
-      );
-      return;
-    }
-
     if (!assetId) {
       RNAlert.alert('Error', 'Missing target asset identifier.');
       return;
@@ -635,7 +614,6 @@ export const InvestmentFlowScreen = ({
     assetId,
     cancelPolling,
     numericAmount,
-    property.minInvestment,
     settlementMode,
     setSafeFlowState,
     setSafeStatus,
@@ -705,7 +683,6 @@ export const InvestmentFlowScreen = ({
           );
 
           try {
-            // 🚀 Explicitly register the txHash with the backend record first
             await investmentApi.verifyInvestmentTransaction(
               investmentId,
               txHash,
@@ -714,7 +691,6 @@ export const InvestmentFlowScreen = ({
             console.log('Initial transaction submission notice:', err);
           }
 
-          // Then kick off polling for confirmation status update
           await pollInvestmentStatus(investmentId);
           return;
         }
@@ -818,7 +794,7 @@ export const InvestmentFlowScreen = ({
 
         <TouchableOpacity
           style={styles.continueButton}
-          onPress={() => navigation.navigate('Portfolio')}
+          onPress={() => navigation.navigate('MainTabs')} // <-- Changed from 'Portfolio' to 'MainTabs'
           activeOpacity={0.85}
         >
           <Text style={styles.continueButtonText}>View Portfolio</Text>
@@ -896,7 +872,7 @@ export const InvestmentFlowScreen = ({
 
               <Text style={styles.propertyYield}>
                 {(property.yieldRate * 100).toFixed(1)}% APY • $
-                {property.tokenPrice}/token
+                {property.unitPrice}/token
               </Text>
             </View>
           </View>
@@ -949,7 +925,7 @@ export const InvestmentFlowScreen = ({
             <Text style={styles.inputLabel}>Enter Allocation Value</Text>
 
             <Text style={styles.inputLimitLabel}>
-              Min: ${property.minInvestment}
+              Min: ${property.minInvestment} (1 Token)
             </Text>
           </View>
 

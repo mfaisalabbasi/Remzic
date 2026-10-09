@@ -27,7 +27,6 @@ export interface TransactionVerificationResponse {
 }
 
 export const investmentApi = {
-  // 1. INTENT PHASE: Generates transaction payload and expected routing context from backend
   createInvestmentIntent: async (
     data: InvestmentRequestDto,
   ): Promise<InvestmentIntentResponse> => {
@@ -38,29 +37,36 @@ export const investmentApi = {
     return response.data;
   },
 
-  // 2. SUBMIT TX PHASE: Submits broadcasted txHash to backend for reconciliation and verification
   verifyInvestmentTransaction: async (
     investmentId: string,
     txHash: string,
   ): Promise<TransactionVerificationResponse> => {
     const response = await apiClient.post<TransactionVerificationResponse>(
       `/investments/${investmentId}/submit-tx`,
-      {
-        txHash,
-      },
+      { txHash },
     );
     return response.data;
   },
 
-  // Fallback / legacy support for off-chain settlements
   createInvestment: async (data: any) => {
     const response = await apiClient.post('/investments', data);
     return response.data;
   },
 
   getMyInvestments: async () => {
-    const response = await apiClient.get('/investments/me');
-    return response.data;
+    try {
+      console.log('📡 [API] Fetching /investments/me...');
+      const response = await apiClient.get('/investments/me');
+      console.log('✅ [API] Investments fetched successfully:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.warn(
+        '⚠️ [API] Failed to fetch /investments/me, returning fallback array:',
+        error?.message,
+      );
+      // Fallback empty or mock array so dashboard doesn't stall
+      return [];
+    }
   },
 
   getLiveStatus: async (investmentId: string) => {

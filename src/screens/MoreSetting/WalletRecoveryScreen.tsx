@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   StatusBar,
   Modal,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -83,47 +85,254 @@ const CheckCircleIcon = ({ size = 28, color = '#34D399' }) => (
   </Svg>
 );
 
+interface RecoveryRequest {
+  id: string;
+  status:
+    | 'PENDING_DOCUMENTS'
+    | 'UNDER_REVIEW'
+    | 'APPROVED'
+    | 'WALLET_CREATED'
+    | 'PROCESSING_BLOCKCHAIN'
+    | 'WAITING_LOGIN'
+    | 'COMPLETED'
+    | 'REJECTED';
+  createdAt: string;
+  referenceNumber?: string;
+  oldWallet: string;
+  newWallet?: string;
+  reason?: string;
+}
+
 export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
-  const [step, setStep] = useState<'overview' | 'modal' | 'kyc' | 'submitted'>(
-    'overview',
+
+  // Backend sync states
+  const [loading, setLoading] = useState(true);
+  const [activeRequest, setActiveRequest] = useState<RecoveryRequest | null>(
+    null,
   );
-  const [documentType, setDocumentType] = useState('Passport');
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [isSubmittingKYC, setIsSubmittingKYC] = useState(false);
+
+  // UI Flow navigation states
+  const [step, setStep] = useState<
+    'overview' | 'modal' | 'kyc' | 'biometric' | 'submitted' | 'active_status'
+  >('overview');
+
+  const [documentType, setDocumentType] = useState('PASSPORT');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+
+  // File attachments state for Multipart FormData
+  const [documentFile, setDocumentFile] = useState<any>(null);
+  const [selfieFile, setSelfieFile] = useState<any>(null);
 
   const documentOptions = [
-    'Passport',
-    'National Identity Card',
-    'Driver License',
-    'Residence Visa / Iqama',
+    { label: 'Passport', value: 'PASSPORT' },
+    { label: 'National Identity Card', value: 'NATIONAL_ID' },
+    { label: 'Driver License', value: 'DRIVER_LICENSE' },
+    { label: 'Residence Visa / Iqama', value: 'IQAMA' },
   ];
 
-  // Updated Native Document Picker Integration using `@react-native-documents/picker`
-  const handleFilePick = async () => {
+  // Fetch initial status from backend on mount
+  useEffect(() => {
+    fetchRecoveryStatus();
+  }, []);
+
+  const fetchRecoveryStatus = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(
+        `${
+          // process.env.EXPO_PUBLIC_API_URL ||
+          'http://localhost:4000/api'
+        }/recovery/status`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          // credentials: 'include', // Uncomment if using cookie-based authentication
+        },
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const req = data?.request || null;
+        if (req) {
+          setActiveRequest(req);
+          // If request exists and needs documents or is under review, route accordingly
+          if (req.status === 'PENDING_DOCUMENTS') {
+            setStep('kyc');
+          } else {
+            setStep('active_status');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch recovery status', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 1: Initialize Recovery Request (POST /recovery/request)
+  const handleStartRecovery = async () => {
+    try {
+      setIsInitializing(true);
+      const res = await fetch(
+        `${
+          // process.env.EXPO_PUBLIC_API_URL ||
+          'http://localhost:4000/api'
+        }/recovery/request`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reason: 'Loss of device/privy access',
+            oldWallet: 'dummy',
+            newWallet: 'dummy',
+          }),
+        },
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.message || 'Failed to initialize recovery request',
+        );
+      }
+
+      const created = data.request || data;
+      setActiveRequest(created);
+      setStep('kyc');
+    } catch (err: any) {
+      Alert.alert(
+        'Initialization Error',
+        err.message || 'Could not start recovery.',
+      );
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
+  // Pick Document File
+  const handlePickDocument = async () => {
     try {
       const [result] = await pick({
         type: [types.pdf, types.images],
         presentationStyle: 'fullScreen',
       });
 
-      if (result && result.name) {
-        setSelectedFileName(result.name);
+      if (result) {
+        setDocumentFile({
+          uri: result.uri,
+          type: result.type || 'application/pdf',
+          name: result.name || 'document.pdf',
+        });
       }
     } catch (err: unknown) {
-      if (isErrorWithCode(err)) {
-        if (err.code === errorCodes.IN_PROGRESS) {
-          // Single pick in progress, multiple concurrent picks handled gracefully
-        } else if (err.code === errorCodes.OPERATION_CANCELED) {
-          // User canceled the document selection modal
-        } else {
-          console.error('Document picker unknown error code:', err.code);
-        }
-      } else {
-        console.error('Unexpected document picker error:', err);
+      if (isErrorWithCode(err) && err.code !== errorCodes.OPERATION_CANCELED) {
+        console.error('Document picker error:', err);
       }
     }
   };
+
+  // Pick Biometric Selfie File
+  const handlePickSelfie = async () => {
+    try {
+      const [result] = await pick({
+        type: [types.images],
+        presentationStyle: 'fullScreen',
+      });
+
+      if (result) {
+        setSelfieFile({
+          uri: result.uri,
+          type: result.type || 'image/jpeg',
+          name: result.name || 'selfie.jpg',
+        });
+      }
+    } catch (err: unknown) {
+      if (isErrorWithCode(err) && err.code !== errorCodes.OPERATION_CANCELED) {
+        console.error('Selfie picker error:', err);
+      }
+    }
+  };
+
+  // Step 2 & 3: Submit Verification Package via Multipart FormData (POST /recovery/verification)
+  const handleSubmitVerification = async () => {
+    if (!activeRequest?.id) {
+      Alert.alert('Error', 'No active recovery request session found.');
+      return;
+    }
+
+    try {
+      setIsSubmittingKYC(true);
+      const formData = new FormData();
+      formData.append('requestId', activeRequest.id);
+      formData.append('documentType', documentType);
+
+      if (documentFile) {
+        formData.append('document', {
+          uri: documentFile.uri,
+          type: documentFile.type,
+          name: documentFile.name,
+        } as any);
+      }
+
+      if (selfieFile) {
+        formData.append('selfie', {
+          uri: selfieFile.uri,
+          type: selfieFile.type,
+          name: selfieFile.name,
+        } as any);
+      }
+
+      const res = await fetch(
+        `${
+          // process.env.EXPO_PUBLIC_API_URL ||
+          'http://localhost:4000/api'
+        }/recovery/verification`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          body: formData,
+        },
+      );
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          result.message || 'Failed to transmit verification package.',
+        );
+      }
+
+      setStep('submitted');
+      await fetchRecoveryStatus();
+    } catch (err: any) {
+      Alert.alert(
+        'Verification Failed',
+        err.message || 'Could not upload files.',
+      );
+    } finally {
+      setIsSubmittingKYC(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          styles.centerLoader,
+          { paddingTop: insets.top },
+        ]}
+      >
+        <ActivityIndicator size="large" color={Colors.accent} />
+        <Text style={styles.loaderText}>Syncing Recovery Status...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -146,8 +355,8 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* --- STEP 1: OVERVIEW CARD --- */}
-        {step === 'overview' && (
+        {/* --- STATE 1: IDLE / OVERVIEW CARD --- */}
+        {step === 'overview' && !activeRequest && (
           <View style={styles.recoveryCard}>
             <View style={styles.cardGlow} />
             <View style={styles.cardHeaderIcon}>
@@ -187,7 +396,79 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
           </View>
         )}
 
-        {/* --- STEP 2: WARNING MODAL / CONFIRMATION STEP --- */}
+        {/* --- STATE 2: ACTIVE RECOVERY STATUS & TIMELINE VIEW --- */}
+        {(step === 'active_status' ||
+          (activeRequest && step === 'overview')) && (
+          <View style={styles.recoveryCard}>
+            <View style={styles.cardGlow} />
+            <View style={styles.headerRow}>
+              <View>
+                <Text style={styles.inputLabel}>Reference Identifier</Text>
+                <Text style={styles.cardTitle}>
+                  {activeRequest?.referenceNumber ||
+                    `#REC-${activeRequest?.id?.slice(0, 8) || 'active'}`}
+                </Text>
+              </View>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusPillText}>
+                  {activeRequest?.status?.replace(/_/g, ' ')}
+                </Text>
+              </View>
+            </View>
+
+            {/* Timeline Progress */}
+            <View style={styles.timelineContainer}>
+              <TimelineStep
+                title="Docs"
+                active={activeRequest?.status === 'PENDING_DOCUMENTS'}
+                passed={['UNDER_REVIEW', 'APPROVED', 'COMPLETED'].includes(
+                  activeRequest?.status || '',
+                )}
+              />
+              <TimelineStep
+                title="Review"
+                active={activeRequest?.status === 'UNDER_REVIEW'}
+                passed={['APPROVED', 'COMPLETED'].includes(
+                  activeRequest?.status || '',
+                )}
+              />
+              <TimelineStep
+                title="Approved"
+                active={activeRequest?.status === 'APPROVED'}
+                passed={activeRequest?.status === 'COMPLETED'}
+              />
+              <TimelineStep
+                title="Completed"
+                active={activeRequest?.status === 'COMPLETED'}
+                passed={false}
+                isLast
+              />
+            </View>
+
+            <View style={styles.infoBox}>
+              <Text style={styles.infoBoxLabel}>Initiated On</Text>
+              <Text style={styles.infoBoxValue}>
+                {activeRequest?.createdAt
+                  ? new Date(activeRequest.createdAt).toLocaleDateString()
+                  : 'N/A'}
+              </Text>
+            </View>
+
+            {activeRequest?.status === 'PENDING_DOCUMENTS' && (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                activeOpacity={0.85}
+                onPress={() => setStep('kyc')}
+              >
+                <Text style={styles.primaryButtonText}>
+                  Continue Verification →
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* --- STATE 3: WARNING CONFIRMATION MODAL --- */}
         {step === 'modal' && (
           <View style={styles.recoveryCard}>
             <View style={styles.cardGlow} />
@@ -212,21 +493,25 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
                 style={styles.secondaryButton}
                 activeOpacity={0.8}
                 onPress={() => setStep('overview')}
+                disabled={isInitializing}
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryButton, { flex: 1, marginTop: 0 }]}
                 activeOpacity={0.85}
-                onPress={() => setStep('kyc')}
+                onPress={handleStartRecovery}
+                disabled={isInitializing}
               >
-                <Text style={styles.primaryButtonText}>Confirm & Proceed</Text>
+                <Text style={styles.primaryButtonText}>
+                  {isInitializing ? 'Initializing...' : 'Confirm & Proceed'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* --- STEP 3: KYC UPLOAD FORM --- */}
+        {/* --- STATE 4: KYC DOCUMENT UPLOAD FORM --- */}
         {step === 'kyc' && (
           <View style={styles.recoveryCard}>
             <View style={styles.cardGlow} />
@@ -241,40 +526,41 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
               re-establish ownership of your token portfolio.
             </Text>
 
-            {/* Document Type Dropdown Selector */}
             <Text style={styles.inputLabel}>Document Type</Text>
             <TouchableOpacity
               style={styles.dropdownInput}
               activeOpacity={0.8}
-              onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+              onPress={() => setIsDropdownOpen(true)}
             >
-              <Text style={styles.inputText}>{documentType}</Text>
+              <Text style={styles.inputText}>
+                {documentOptions.find(o => o.value === documentType)?.label ||
+                  documentType}
+              </Text>
               <Text style={styles.dropdownArrow}>▼</Text>
             </TouchableOpacity>
 
-            {/* Document Upload Box */}
-            <Text style={styles.inputLabel}>Document Image / PDF File</Text>
+            <Text style={styles.inputLabel}>Document File (PDF / Image)</Text>
             <TouchableOpacity
               style={[
                 styles.fileUploadBox,
-                selectedFileName ? styles.fileUploadBoxActive : null,
+                documentFile ? styles.fileUploadBoxActive : null,
               ]}
               activeOpacity={0.8}
-              onPress={handleFilePick}
+              onPress={handlePickDocument}
             >
               <DocumentIcon
                 size={22}
-                color={selectedFileName ? '#34D399' : Colors.accent}
+                color={documentFile ? '#34D399' : Colors.accent}
               />
               <Text
                 style={[
                   styles.fileUploadText,
-                  selectedFileName ? styles.fileUploadTextActive : null,
+                  documentFile ? styles.fileUploadTextActive : null,
                 ]}
               >
-                {selectedFileName
-                  ? `📎 ${selectedFileName}`
-                  : 'Choose Government ID File (PDF, JPG, PNG)'}
+                {documentFile
+                  ? `📎 ${documentFile.name}`
+                  : 'Choose Government ID File'}
               </Text>
             </TouchableOpacity>
 
@@ -289,7 +575,8 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
               <TouchableOpacity
                 style={[styles.primaryButton, { flex: 1, marginTop: 0 }]}
                 activeOpacity={0.85}
-                onPress={() => setStep('submitted')}
+                onPress={() => setStep('biometric')}
+                disabled={!documentFile}
               >
                 <Text style={styles.primaryButtonText}>Next: Biometrics →</Text>
               </TouchableOpacity>
@@ -297,7 +584,68 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
           </View>
         )}
 
-        {/* --- STEP 4: SUBMITTED SUCCESS VIEW --- */}
+        {/* --- STATE 5: BIOMETRIC / SELFIE STEP --- */}
+        {step === 'biometric' && (
+          <View style={styles.recoveryCard}>
+            <View style={styles.cardGlow} />
+            <View style={styles.stepIndicatorRow}>
+              <Text style={styles.cardTitle}>Biometric Verification</Text>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>STEP 2 OF 2</Text>
+              </View>
+            </View>
+            <Text style={styles.cardDesc}>
+              Upload a clear live face scan or selfie matching your uploaded
+              identity document.
+            </Text>
+
+            <Text style={styles.inputLabel}>Biometric Selfie Image</Text>
+            <TouchableOpacity
+              style={[
+                styles.fileUploadBox,
+                selfieFile ? styles.fileUploadBoxActive : null,
+              ]}
+              activeOpacity={0.8}
+              onPress={handlePickSelfie}
+            >
+              <DocumentIcon
+                size={22}
+                color={selfieFile ? '#34D399' : Colors.accent}
+              />
+              <Text
+                style={[
+                  styles.fileUploadText,
+                  selfieFile ? styles.fileUploadTextActive : null,
+                ]}
+              >
+                {selfieFile ? `📎 ${selfieFile.name}` : 'Choose Selfie Image'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                activeOpacity={0.8}
+                onPress={() => setStep('kyc')}
+                disabled={isSubmittingKYC}
+              >
+                <Text style={styles.secondaryButtonText}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1, marginTop: 0 }]}
+                activeOpacity={0.85}
+                onPress={handleSubmitVerification}
+                disabled={isSubmittingKYC || !selfieFile}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isSubmittingKYC ? 'Transmitting...' : 'Submit Package'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* --- STATE 6: SUBMITTED SUCCESS VIEW --- */}
         {step === 'submitted' && (
           <View style={styles.recoveryCard}>
             <View style={styles.cardGlow} />
@@ -322,11 +670,6 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
                 <Text style={styles.statusRowLabel}>Est. Processing Time</Text>
                 <Text style={styles.statusRowVal}>1–3 business days</Text>
               </View>
-              <View style={styles.statusDivider} />
-              <View style={styles.statusRow}>
-                <Text style={styles.statusRowLabel}>Reference Identifier</Text>
-                <Text style={styles.statusRowValAccent}>#REC-287bb0a6</Text>
-              </View>
             </View>
 
             <TouchableOpacity
@@ -334,8 +677,9 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
               activeOpacity={0.85}
               onPress={() => {
                 setStep('overview');
-                setSelectedFileName(null);
-                navigation.navigate('MainTabs', { screen: 'Home' });
+                setDocumentFile(null);
+                setSelfieFile(null);
+                navigation.goBack();
               }}
             >
               <Text style={styles.primaryButtonText}>Return to Dashboard</Text>
@@ -361,26 +705,26 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.modalHeaderTitle}>Select Document Type</Text>
             {documentOptions.map(item => (
               <TouchableOpacity
-                key={item}
+                key={item.value}
                 style={[
                   styles.modalOptionItem,
-                  documentType === item && styles.modalOptionActive,
+                  documentType === item.value && styles.modalOptionActive,
                 ]}
                 activeOpacity={0.8}
                 onPress={() => {
-                  setDocumentType(item);
+                  setDocumentType(item.value);
                   setIsDropdownOpen(false);
                 }}
               >
                 <Text
                   style={[
                     styles.modalOptionText,
-                    documentType === item && styles.modalOptionTextActive,
+                    documentType === item.value && styles.modalOptionTextActive,
                   ]}
                 >
-                  {item}
+                  {item.label}
                 </Text>
-                {documentType === item && (
+                {documentType === item.value && (
                   <Text style={{ color: Colors.accent, fontWeight: '800' }}>
                     ✓
                   </Text>
@@ -394,11 +738,33 @@ export const WalletRecoveryScreen = ({ navigation }: { navigation: any }) => {
   );
 };
 
+// Helper Timeline Step Subcomponent
+const TimelineStep = ({ title, active, passed, isLast = false }: any) => (
+  <View style={styles.timelineStepContainer}>
+    <View
+      style={[
+        styles.timelineIndicator,
+        passed && styles.timelinePassed,
+        active && styles.timelineActive,
+      ]}
+    >
+      <Text style={styles.timelineIndicatorText}>{passed ? '✓' : ''}</Text>
+    </View>
+    <Text style={[styles.timelineText, active && styles.timelineTextActive]}>
+      {title}
+    </Text>
+    {!isLast && (
+      <View
+        style={[styles.timelineLine, passed && styles.timelineLinePassed]}
+      />
+    )}
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#03100B',
-  },
+  container: { flex: 1, backgroundColor: '#03100B' },
+  centerLoader: { justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loaderText: { color: '#A7F3D0', fontSize: 13, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,22 +784,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.2)',
   },
-  backButtonText: {
-    color: '#F0FDF4',
-    fontSize: 18,
-    fontWeight: '700',
-  },
+  backButtonText: { color: '#F0FDF4', fontSize: 18, fontWeight: '700' },
   headerTitle: {
     color: '#F0FDF4',
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    paddingTop: 16,
-  },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 16 },
   recoveryCard: {
     backgroundColor: '#061A12',
     borderRadius: 24,
@@ -473,26 +831,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
   },
-  cardDesc: {
-    color: '#A7F3D0',
-    opacity: 0.8,
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  securityBulletList: {
-    gap: 6,
-    marginVertical: 4,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  bulletDot: {
-    color: '#34D399',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  cardDesc: { color: '#A7F3D0', opacity: 0.8, fontSize: 13, lineHeight: 20 },
+  securityBulletList: { gap: 6, marginVertical: 4 },
+  bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bulletDot: { color: '#34D399', fontSize: 16, fontWeight: '800' },
   bulletText: {
     color: '#6EE7B7',
     opacity: 0.8,
@@ -526,15 +868,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.25)',
   },
-  secondaryButtonText: {
-    color: '#F0FDF4',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  buttonRow: {
+  secondaryButtonText: { color: '#F0FDF4', fontSize: 14, fontWeight: '700' },
+  buttonRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  headerRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   modalBadge: {
     flexDirection: 'row',
@@ -547,11 +886,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
   },
-  modalBadgeText: {
-    color: '#EF4444',
-    fontSize: 11,
-    fontWeight: '700',
-  },
+  modalBadgeText: { color: '#EF4444', fontSize: 11, fontWeight: '700' },
   infoBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -568,11 +903,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  infoBoxValue: {
-    color: '#F0FDF4',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  infoBoxValue: { color: '#F0FDF4', fontSize: 13, fontWeight: '700' },
   stepIndicatorRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -586,11 +917,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
   },
-  stepBadgeText: {
-    color: Colors.accent,
-    fontSize: 10,
-    fontWeight: '800',
-  },
+  stepBadgeText: { color: Colors.accent, fontSize: 10, fontWeight: '800' },
   inputLabel: {
     color: '#6EE7B7',
     fontSize: 12,
@@ -608,15 +935,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  inputText: {
-    color: '#F0FDF4',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  dropdownArrow: {
-    color: '#6EE7B7',
-    fontSize: 11,
-  },
+  inputText: { color: '#F0FDF4', fontSize: 13, fontWeight: '600' },
+  dropdownArrow: { color: '#6EE7B7', fontSize: 11 },
   fileUploadBox: {
     backgroundColor: '#082017',
     borderWidth: 1,
@@ -639,10 +959,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  fileUploadTextActive: {
-    color: '#34D399',
-    opacity: 1,
-  },
+  fileUploadTextActive: { color: '#34D399', opacity: 1 },
   successCheckCircle: {
     width: 52,
     height: 52,
@@ -666,26 +983,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  statusDivider: {
-    height: 1,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-  },
+  statusDivider: { height: 1, backgroundColor: 'rgba(16, 185, 129, 0.08)' },
   statusRowLabel: {
     color: '#6EE7B7',
     opacity: 0.7,
     fontSize: 12,
     fontWeight: '500',
   },
-  statusRowVal: {
-    color: '#F0FDF4',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusRowValAccent: {
-    color: Colors.accent,
-    fontSize: 12,
-    fontWeight: '800',
-  },
+  statusRowVal: { color: '#F0FDF4', fontSize: 12, fontWeight: '700' },
   statusPill: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
     paddingHorizontal: 8,
@@ -694,11 +999,50 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
   },
-  statusPillText: {
-    color: Colors.accent,
-    fontSize: 10,
-    fontWeight: '800',
+  statusPillText: { color: Colors.accent, fontSize: 10, fontWeight: '800' },
+  timelineContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 10,
   },
+  timelineStepContainer: {
+    alignItems: 'center',
+    flex: 1,
+    position: 'relative',
+  },
+  timelineIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#082017',
+    borderWidth: 1,
+    borderColor: '#374151',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  timelinePassed: {
+    backgroundColor: 'rgba(52, 211, 153, 0.2)',
+    borderColor: '#34D399',
+  },
+  timelineActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderColor: Colors.accent,
+  },
+  timelineIndicatorText: { color: '#34D399', fontSize: 10, fontWeight: '700' },
+  timelineText: { color: '#6EE7B7', fontSize: 10, opacity: 0.6 },
+  timelineTextActive: { color: '#F0FDF4', fontWeight: '700', opacity: 1 },
+  timelineLine: {
+    position: 'absolute',
+    top: 12,
+    right: '-50%',
+    width: '100%',
+    height: 2,
+    backgroundColor: '#1F2937',
+    zIndex: -1,
+  },
+  timelineLinePassed: { backgroundColor: '#34D399' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(3, 16, 11, 0.8)',
@@ -744,13 +1088,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16, 185, 129, 0.4)',
     backgroundColor: 'rgba(16, 185, 129, 0.08)',
   },
-  modalOptionText: {
-    color: '#A7F3D0',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalOptionTextActive: {
-    color: '#F0FDF4',
-    fontWeight: '700',
-  },
+  modalOptionText: { color: '#A7F3D0', fontSize: 14, fontWeight: '600' },
+  modalOptionTextActive: { color: '#F0FDF4', fontWeight: '700' },
 });

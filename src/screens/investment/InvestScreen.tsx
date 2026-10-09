@@ -55,7 +55,10 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
       assetList.length;
 
     return {
-      totalValuation: `$${(totalValuation / 1000000).toFixed(1)}M+`,
+      totalValuation:
+        totalValuation >= 1000000
+          ? `$${(totalValuation / 1000000).toFixed(1)}M+`
+          : `$${(totalValuation / 1000).toFixed(0)}K+`,
       avgYield: `${avgYieldNum.toFixed(1)}%`,
     };
   }, [assetList]);
@@ -64,13 +67,15 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
   const filteredProperties = useMemo(() => {
     return assetList
       .filter(item => {
-        // Dynamic matching across title, location, or status tags
         const categoryMatch =
           selectedCategory === 'All' ||
           item.title?.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-          item.status?.toLowerCase() === selectedCategory.toLowerCase();
+          item.status?.toLowerCase() === selectedCategory.toLowerCase() ||
+          (item as any)?.assetClass?.toLowerCase() ===
+            selectedCategory.toLowerCase();
 
         const searchMatch =
+          !searchQuery ||
           item.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           (item.location &&
             item.location.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -83,7 +88,10 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
         } else if (sortBy === 'price') {
           return (a.unitPrice || 0) - (b.unitPrice || 0);
         }
-        return 0; // Default ordering
+        // Safe string/number fallback comparison for IDs
+        const idA = String(a.id || '');
+        const idB = String(b.id || '');
+        return idB.localeCompare(idA);
       });
   }, [assetList, selectedCategory, searchQuery, sortBy]);
 
@@ -243,7 +251,6 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
             </View>
           ) : (
             filteredProperties.map(item => {
-              // Fallback to high quality architectural mock photos if gallery is empty
               const imageUri =
                 item.galleryImages?.[0] ||
                 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=800&auto=format&fit=crop';
@@ -255,10 +262,32 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
               const minInv = item.unitPrice ? `$${item.unitPrice}` : `$100`;
               const assetType = item.status || 'Commercial Real Estate';
 
-              // Dynamic mock funding progression bar calculation based on string hash / token supply
+              // --- IDENTICAL FUNDING PERCENTAGE CALCULATION ---
+              const unitPrice = Number((item as any).unitPrice ?? 10);
+              const tokenSupply = Number((item as any).tokenSupply ?? 1000);
+
+              const fundingTarget = Number(
+                (item as any).totalValue ||
+                  (item as any).target ||
+                  (item as any).funding?.target ||
+                  tokenSupply * unitPrice ||
+                  10000,
+              );
+
+              const fundingRaised = Number(
+                (item as any).funded ??
+                  (item as any).funding?.raised ??
+                  (item as any).raised ??
+                  (item as any).raisedAmount ??
+                  (item as any).currentRaised ??
+                  0,
+              );
+
+              const rawPercentage =
+                fundingTarget > 0 ? (fundingRaised / fundingTarget) * 100 : 0;
               const fundedPercentage = Math.min(
-                Math.max(((item.tokenSupply || 10000) % 75) + 25, 35),
-                94,
+                Math.max(Math.round(rawPercentage), 0),
+                100,
               );
 
               const propertyPayload = {
@@ -268,17 +297,15 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
                 type: assetType,
                 yield: yieldVal,
                 minInvestment: `Min. ${minInv}`,
-                funded: `${fundedPercentage}% Funded`,
+                funded: `${fundedPercentage}% Funded`, // String for UI display
                 imageUri,
                 overview:
                   item.overview ||
                   'Institutional-grade fully audited tokenized real-world asset backed by verified underlying physical cash flows.',
-                tokenSupply: `${
-                  item.tokenSupply?.toLocaleString() || '10,000'
-                } Tokens`,
-                valuation: `$${
-                  item.totalValue?.toLocaleString() || '1,500,000'
-                } USD`,
+                tokenSupply: `${tokenSupply.toLocaleString()} Tokens`,
+                unitPrice,
+                totalValue: fundingTarget,
+                fundedAmount: fundingRaised, // <-- Changed from 'funded' to 'fundedAmount'
                 tokenAddress: item.tokenAddress || '0x71C...39a2',
                 treasuryAddress: item.treasuryAddress || '0x49B...12f8',
                 galleryImages: item.galleryImages || [imageUri],
@@ -317,8 +344,8 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
                     <View style={styles.valuationPill}>
                       <Text style={styles.valuationPillText}>
                         Pool Cap: $
-                        {item.totalValue
-                          ? (item.totalValue / 1000).toFixed(0) + 'K'
+                        {fundingTarget
+                          ? (fundingTarget / 1000).toFixed(0) + 'K'
                           : '1.2M'}
                       </Text>
                     </View>
@@ -333,8 +360,16 @@ export const InvestScreen = ({ navigation }: { navigation: any }) => {
                       📍 {item.location || 'Global Financial Hub'}
                     </Text>
 
-                    {/* Progress Bar Showing Subscription Level */}
-                    <View style={styles.progressContainer}>
+                    {/* --- DYNAMIC PROGRESS BAR & METRIC LABEL --- */}
+                    <View style={styles.progressSection}>
+                      <View style={styles.progressHeaderRow}>
+                        <Text style={styles.progressLabelText}>
+                          Subscription Progress
+                        </Text>
+                        <Text style={styles.progressPercentText}>
+                          {fundedPercentage}%
+                        </Text>
+                      </View>
                       <View style={styles.progressBarBackground}>
                         <View
                           style={[
@@ -628,19 +663,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 10,
   },
-  progressContainer: {
+  progressSection: {
     marginBottom: 12,
   },
+  progressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  progressLabelText: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  progressPercentText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   progressBarBackground: {
-    height: 4,
+    height: 5,
     backgroundColor: '#1E293B',
-    borderRadius: 2,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#34D399',
-    borderRadius: 2,
+    borderRadius: 3,
   },
   propertyDivider: {
     height: 1,

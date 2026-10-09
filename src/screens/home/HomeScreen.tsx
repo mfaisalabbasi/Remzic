@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/screens/HomeScreen.tsx
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +8,18 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  RefreshControl,
+  ActivityIndicator,
+  ImageBackground,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
+import { walletApi, WalletData } from '../../services/api/walletApi';
+import { investmentApi } from '../../services/api/investmentApi';
+import { fetchApprovedAssets, AssetData } from '../../services/api/asset';
+import { useAuth } from '../../navigation/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -46,7 +55,6 @@ const MenuIcon = ({ size = 20, color = Colors.accent }) => (
   </Svg>
 );
 
-// Custom Fintech SVG Icons for Action Grid
 const InvestIcon = ({ size = 22, color = '#34D399' }) => (
   <Svg
     width={size}
@@ -92,7 +100,6 @@ const WithdrawIcon = ({ size = 22, color = '#34D399' }) => (
   </Svg>
 );
 
-// Custom Market / Trading Chart Icon representing the secondary market
 const MarketIcon = ({ size = 22, color = '#34D399' }) => (
   <Svg
     width={size}
@@ -113,7 +120,106 @@ const MarketIcon = ({ size = 22, color = '#34D399' }) => (
 
 export const HomeScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  const [userName, setUserName] = useState<string>('Investor');
   const [isBalanceHidden, setIsBalanceHidden] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Dynamic state data
+  const [walletData, setWalletData] = useState<WalletData | null>(null);
+  const [myInvestments, setMyInvestments] = useState<any[]>([]);
+  const [featuredAsset, setFeaturedAsset] = useState<AssetData | null>(null);
+
+  useEffect(() => {
+    const resolveUserIdentity = async () => {
+      if (user?.name || user?.fullName || user?.username) {
+        setUserName(user.name || user.fullName || user.username);
+        return;
+      }
+
+      try {
+        const storedUser = await AsyncStorage.getItem('userData');
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          if (parsed?.name || parsed?.fullName || parsed?.username) {
+            setUserName(parsed.name || parsed.fullName || parsed.username);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not retrieve user profile name', e);
+      }
+    };
+
+    resolveUserIdentity();
+  }, [user]);
+
+  const loadDashboardData = async () => {
+    try {
+      const [walletRes, investmentsRes, assetsRes] = await Promise.all([
+        walletApi.getWalletData().catch(() => null),
+        investmentApi.getMyInvestments().catch(() => []),
+        fetchApprovedAssets().catch(() => []),
+      ]);
+
+      if (walletRes) setWalletData(walletRes);
+      if (investmentsRes) setMyInvestments(investmentsRes);
+
+      if (assetsRes && assetsRes.length > 0) {
+        setFeaturedAsset(assetsRes[0]);
+      }
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadDashboardData();
+  }, []);
+
+  const totalInvested = myInvestments.reduce(
+    (sum, inv) => sum + (Number(inv.amount) || 0),
+    0,
+  );
+
+  const availableBalance =
+    walletData?.availableBalance ?? walletData?.balance ?? 0;
+
+  // --- IDENTICAL FUNDING PERCENTAGE CALCULATION AS AssetDetails.tsx ---
+  const unitPrice = Number((featuredAsset as any)?.unitPrice ?? 10);
+  const tokenSupply = Number((featuredAsset as any)?.tokenSupply ?? 1000);
+
+  const fundingTarget = Number(
+    (featuredAsset as any)?.totalValue ||
+      (featuredAsset as any)?.target ||
+      (featuredAsset as any)?.funding?.target ||
+      tokenSupply * unitPrice ||
+      10000,
+  );
+
+  const fundingRaised = Number(
+    (featuredAsset as any)?.funded ??
+      (featuredAsset as any)?.funding?.raised ??
+      (featuredAsset as any)?.raised ??
+      0,
+  );
+
+  const rawPercentage =
+    fundingTarget > 0 ? (fundingRaised / fundingTarget) * 100 : 0;
+  const fundedPercentage = Math.min(
+    Math.max(Math.round(rawPercentage), 0),
+    100,
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -132,7 +238,7 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
           </View>
           <View>
             <Text style={styles.welcomeSubtext}>Assalamu Alaikum</Text>
-            <Text style={styles.userName}>Muhammad Faisal</Text>
+            <Text style={styles.userName}>{userName}</Text>
           </View>
         </TouchableOpacity>
 
@@ -149,25 +255,43 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.accent}
+          />
+        }
       >
         {/* Institutional Emerald Portfolio Card */}
         <View style={styles.portfolioCard}>
           <View style={styles.portfolioGlow} />
           <View style={styles.portfolioCardHeader}>
-            <Text style={styles.portfolioTitle}>Total Portfolio Value</Text>
+            <Text style={styles.portfolioTitle}>Available Balance</Text>
             <TouchableOpacity
               onPress={() => setIsBalanceHidden(!isBalanceHidden)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.eyeIcon}>
-                {isBalanceHidden ? '🙈' : '👁️'}
-              </Text>
+              <Text style={styles.eyeIcon}>{isBalanceHidden ? '🙈' : '👁'}</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.portfolioAmount}>
-            {isBalanceHidden ? '••••••••' : '$24,680.50'}
-          </Text>
+          {loading && !walletData ? (
+            <ActivityIndicator
+              size="small"
+              color={Colors.accent}
+              style={{ marginVertical: 14 }}
+            />
+          ) : (
+            <Text style={styles.portfolioAmount}>
+              {isBalanceHidden
+                ? '••••••••'
+                : `$${availableBalance.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`}
+            </Text>
+          )}
 
           <View style={styles.growthBadgeRow}>
             <View style={styles.growthBadge}>
@@ -179,22 +303,34 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
           <View style={styles.portfolioStatsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Invested</Text>
-              <Text style={styles.statValue}>$18,200</Text>
+              <Text style={styles.statValue}>
+                {isBalanceHidden
+                  ? '••••'
+                  : `$${totalInvested.toLocaleString()}`}
+              </Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Returns</Text>
-              <Text style={styles.statValueSuccess}>+$6,480</Text>
+              <Text style={styles.statValueSuccess}>
+                {isBalanceHidden
+                  ? '••••'
+                  : `+$${(walletData?.totalEarned || 0).toLocaleString()}`}
+              </Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Available</Text>
-              <Text style={styles.statValue}>$2,500</Text>
+              <Text style={styles.statValue}>
+                {isBalanceHidden
+                  ? '••••'
+                  : `$${availableBalance.toLocaleString()}`}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* Quick Action Grid with SVG Fintech Icons */}
+        {/* Quick Action Grid */}
         <View style={styles.actionsGrid}>
           <TouchableOpacity
             style={styles.actionButton}
@@ -254,40 +390,155 @@ export const HomeScreen = ({ navigation }: { navigation: any }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Featured Property Card */}
-        <TouchableOpacity
-          style={styles.propertyCard}
-          activeOpacity={0.9}
-          onPress={() => navigation.navigate('AssetDetails', { assetId: '1' })}
-        >
-          <View style={styles.propertyImagePlaceholder}>
-            <View style={styles.assetBadge}>
-              <Text style={styles.assetBadgeText}>🔥 High Demand</Text>
-            </View>
-            <Text style={styles.propertyImageTag}>Dubai Creek Residence</Text>
+        {/* Fintech-Grade Featured Property Card */}
+        {loading && !featuredAsset ? (
+          <View
+            style={[styles.propertyCard, { padding: 40, alignItems: 'center' }]}
+          >
+            <ActivityIndicator size="small" color={Colors.accent} />
           </View>
+        ) : featuredAsset ? (
+          <TouchableOpacity
+            style={styles.propertyCard}
+            activeOpacity={0.92}
+            onPress={() => {
+              const imageUri =
+                featuredAsset.galleryImages?.[0] ||
+                'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=800&auto=format&fit=crop';
 
-          <View style={styles.propertyInfo}>
-            <View style={styles.propertyHeaderRow}>
-              <Text style={styles.propertyName}>Dubai Creek Luxury Tower</Text>
-              <Text style={styles.propertyTokenSymbol}>[DXB-01]</Text>
-            </View>
-            <Text style={styles.propertyLocation}>📍 Downtown Dubai, UAE</Text>
+              const yieldVal = featuredAsset.expectedYield
+                ? `${featuredAsset.expectedYield}% expected yield`
+                : '8.5% expected yield';
 
-            <View style={styles.propertyDivider} />
+              const minInv = featuredAsset.unitPrice
+                ? `$${featuredAsset.unitPrice}`
+                : `$100`;
+              const assetType =
+                featuredAsset.status || 'Commercial Real Estate';
 
-            <View style={styles.propertyYieldRow}>
-              <View>
-                <Text style={styles.yieldLabel}>Projected APY</Text>
-                <Text style={styles.yieldHighlight}>8.5% Net Yield</Text>
+              const propertyPayload = {
+                id: featuredAsset.id,
+                title: featuredAsset.title,
+                location:
+                  featuredAsset.location || 'Global Institutional District',
+                type: assetType,
+                yield: yieldVal,
+                minInvestment: `Min. ${minInv}`,
+                funded: `${fundedPercentage}% Funded`, // String for UI display
+                imageUri,
+                overview:
+                  featuredAsset.overview ||
+                  'Institutional-grade fully audited tokenized real-world asset backed by verified underlying physical cash flows.',
+                tokenSupply: `${tokenSupply.toLocaleString()} Tokens`,
+                unitPrice,
+                totalValue: fundingTarget,
+                fundedAmount: fundingRaised, // <-- Changed from 'funded' to 'fundedAmount'
+                tokenAddress: featuredAsset.tokenAddress || '0x71C...39a2',
+                treasuryAddress:
+                  featuredAsset.treasuryAddress || '0x49B...12f8',
+                galleryImages: featuredAsset.galleryImages || [imageUri],
+              };
+
+              navigation.navigate('AssetDetails', {
+                property: propertyPayload,
+              });
+            }}
+          >
+            {/* Asset Image Header with Immersive Gradient & Live Overlays */}
+            <ImageBackground
+              source={{
+                uri:
+                  featuredAsset.galleryImages?.[0] ||
+                  'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=800&auto=format&fit=crop',
+              }}
+              style={styles.propertyImageBackground}
+              imageStyle={styles.propertyImageStyle}
+            >
+              <View style={styles.imageDarkGradientOverlay} />
+
+              <View style={styles.topBadgeRow}>
+                <View style={styles.fundedBadge}>
+                  <View style={styles.pulsingDot} />
+                  <Text style={styles.fundedText}>
+                    {fundedPercentage}% Funded
+                  </Text>
+                </View>
+                <Text style={styles.propertyTypeTag}>
+                  {featuredAsset.status || 'Commercial'}
+                </Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.yieldLabel}>Entry Threshold</Text>
-                <Text style={styles.minInvestment}>Min. $500</Text>
+
+              <View style={styles.valuationPill}>
+                <Text style={styles.valuationPillText}>
+                  Pool Cap: $
+                  {fundingTarget
+                    ? (fundingTarget / 1000).toFixed(0) + 'K'
+                    : '1.2M'}
+                </Text>
+              </View>
+            </ImageBackground>
+
+            {/* Fintech Body Content Details */}
+            <View style={styles.propertyInfo}>
+              <View style={styles.propertyHeaderRow}>
+                <Text style={styles.propertyName} numberOfLines={1}>
+                  {featuredAsset.title}
+                </Text>
+                <Text style={styles.propertyTokenSymbol}>
+                  [RWA-{featuredAsset.id.substring(0, 4).toUpperCase()}]
+                </Text>
+              </View>
+              <Text style={styles.propertyLocation} numberOfLines={1}>
+                📍 {featuredAsset.location || 'Global Financial Hub'}
+              </Text>
+
+              {/* Dynamically Computed Progress Tracker */}
+              <View style={styles.progressSection}>
+                <View style={styles.progressHeaderRow}>
+                  <Text style={styles.progressLabelText}>
+                    Subscription Progress
+                  </Text>
+                  <Text style={styles.progressPercentText}>
+                    {fundedPercentage}%
+                  </Text>
+                </View>
+                <View style={styles.progressBarBackground}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      { width: `${fundedPercentage}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.propertyDivider} />
+
+              <View style={styles.propertyYieldRow}>
+                <View>
+                  <Text style={styles.yieldLabel}>Projected Yield</Text>
+                  <Text style={styles.yieldHighlight}>
+                    {featuredAsset.expectedYield
+                      ? `${featuredAsset.expectedYield}% expected yield`
+                      : '8.5% expected yield'}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.yieldLabel}>Entry Threshold</Text>
+                  <Text style={styles.minInvestment}>Min. ${unitPrice}</Text>
+                </View>
               </View>
             </View>
+          </TouchableOpacity>
+        ) : (
+          <View
+            style={[styles.propertyCard, { padding: 24, alignItems: 'center' }]}
+          >
+            <Text style={{ color: '#6EE7B7', fontSize: 13 }}>
+              No active featured assets found.
+            </Text>
           </View>
-        </TouchableOpacity>
+        )}
       </ScrollView>
     </View>
   );
@@ -532,46 +783,89 @@ const styles = StyleSheet.create({
   },
   propertyCard: {
     backgroundColor: '#061A12',
-    borderRadius: 20,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.15)',
-    marginBottom: 14,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
     elevation: 6,
   },
-  propertyImagePlaceholder: {
-    height: 150,
-    backgroundColor: '#09291D',
-    justifyContent: 'flex-end',
-    padding: 14,
+  propertyImageBackground: {
+    height: 180,
+    width: '100%',
+    justifyContent: 'space-between',
+    padding: 12,
   },
-  assetBadge: {
+  propertyImageStyle: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+  },
+  imageDarkGradientOverlay: {
     position: 'absolute',
-    top: 12,
-    left: 12,
-    backgroundColor: 'rgba(3, 16, 11, 0.8)',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(3, 16, 11, 0.38)',
+  },
+  topBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  fundedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(3, 16, 11, 0.85)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  pulsingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+    marginRight: 6,
+  },
+  fundedText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  propertyTypeTag: {
+    color: '#F0FDF4',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: '700',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  valuationPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(3, 16, 11, 0.85)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+    zIndex: 2,
   },
-  assetBadgeText: {
-    color: Colors.accent,
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  propertyImageTag: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 16,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+  valuationPillText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '700',
   },
   propertyInfo: {
     padding: 16,
@@ -580,16 +874,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   propertyName: {
     color: '#F0FDF4',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
   },
   propertyTokenSymbol: {
     color: '#6EE7B7',
-    opacity: 0.6,
+    opacity: 0.7,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -598,6 +894,38 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     fontSize: 12,
     marginBottom: 12,
+  },
+  progressSection: {
+    marginBottom: 12,
+  },
+  progressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  progressLabelText: {
+    color: '#6EE7B7',
+    opacity: 0.6,
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  progressPercentText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  progressBarBackground: {
+    height: 5,
+    backgroundColor: '#09291D',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#34D399',
+    borderRadius: 3,
   },
   propertyDivider: {
     height: 1,
