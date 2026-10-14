@@ -704,7 +704,8 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
                             },
                           ]}
                         >
-                          {item.status}
+                          {/* {item.status} */}
+                          Check
                         </Text>
                       </View>
                       <ChevronRightIcon size={14} color="#64748B" />
