@@ -90,10 +90,15 @@ export const secondaryMarketApi = {
     return response.data;
   },
 
-  confirmListing: async (listingId: string) => {
+  confirmListing: async (
+    params: { listingId: string; txHash?: string } | string,
+  ) => {
+    const listingId = typeof params === 'string' ? params : params.listingId;
+    const txHash = typeof params === 'string' ? undefined : params.txHash;
+
     const response = await apiClient.post(
       '/secondary-market/listings/confirm',
-      { listingId },
+      { listingId, txHash },
     );
     return response.data;
   },

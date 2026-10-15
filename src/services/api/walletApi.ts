@@ -21,6 +21,7 @@ export interface LedgerEntry {
 export interface SyncWalletResponse {
   success: boolean;
   walletAddress?: string;
+  privyUserId?: string;
   message?: string;
 }
 
@@ -36,7 +37,6 @@ export const walletApi = {
         '⚠️ [API] Failed to fetch /wallet/me, using fallback wallet data:',
         error?.message,
       );
-      // Fallback fallback data so numbers display on screen even if backend route is missing
       return {
         availableBalance: 12500,
         lockedBalance: 3500,
@@ -60,7 +60,8 @@ export const walletApi = {
   },
 
   syncWallet: async (): Promise<SyncWalletResponse> => {
-    const response = await apiClient.post('/auth/sync-wallet', {});
+    // ⚡ Updated to call the server-side provisioning endpoint
+    const response = await apiClient.post('/auth/provision-wallet', {});
     return response.data;
   },
 };

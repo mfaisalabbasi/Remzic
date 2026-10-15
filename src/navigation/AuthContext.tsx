@@ -1,3 +1,4 @@
+// src/navigation/AuthContext.tsx
 import React, {
   createContext,
   useCallback,
@@ -6,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secondaryMarketApi } from '../services/api/secondaryMarketApi';
 
 const ACCESS_TOKEN_KEY = 'accessToken';
 const CACHED_WALLET_KEY = 'cached_walletAddress';
@@ -13,6 +15,10 @@ const CACHED_WALLET_KEY = 'cached_walletAddress';
 const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
 export interface UserProfile {
+  id?: string;
+  name?: string;
+  email?: string;
+  role?: string;
   walletAddress?: string;
   [key: string]: any;
 }
@@ -51,15 +57,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<UserProfile | null>(null);
 
-  /**
-   * Restore the mobile Web2 session.
-   *
-   * IMPORTANT:
-   * A missing cached wallet does NOT mean the user is unauthenticated.
-   *
-   * The wallet cache is only a convenience value. It is never treated
-   * as proof of wallet ownership or as the signing authority.
-   */
   useEffect(() => {
     let cancelled = false;
 
@@ -77,15 +74,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (token && token.trim().length > 0) {
           setIsAuthenticated(true);
 
-          const normalizedWallet = normalizeWalletAddress(cachedWallet);
+          let userProfile: UserProfile = {};
 
-          setUser(
-            normalizedWallet
-              ? {
-                  walletAddress: normalizedWallet,
-                }
-              : {},
+          try {
+            const remoteUser = await secondaryMarketApi.getMe();
+            if (remoteUser) {
+              userProfile = remoteUser.user || remoteUser;
+            }
+          } catch (apiErr) {
+            console.warn(
+              '[AuthContext] Could not fetch remote profile, falling back to cache:',
+              apiErr,
+            );
+          }
+
+          const normalizedWallet = normalizeWalletAddress(
+            cachedWallet || userProfile.walletAddress,
           );
+
+          setUser({
+            ...userProfile,
+            walletAddress: normalizedWallet,
+          });
         } else {
           setIsAuthenticated(false);
           setUser(null);
@@ -114,12 +124,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  /**
-   * Store the Remzik Web2 authentication session.
-   *
-   * The wallet is optional because ON_CHAIN signing happens through
-   * the actual Privy wallet inside the secure WebView.
-   */
   const login = useCallback(
     async (token: string, walletAddress?: string): Promise<void> => {
       const normalizedToken = token?.trim();
@@ -128,9 +132,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error('A valid authentication token is required.');
       }
 
-      const normalizedWallet = normalizeWalletAddress(walletAddress);
-
       await AsyncStorage.setItem(ACCESS_TOKEN_KEY, normalizedToken);
+
+      let userProfile: UserProfile = {};
+      try {
+        const remoteUser = await secondaryMarketApi.getMe();
+        if (remoteUser) {
+          userProfile = remoteUser.user || remoteUser;
+        }
+      } catch (err) {
+        console.warn(
+          '[AuthContext] Failed fetching user profile on login:',
+          err,
+        );
+      }
+
+      const normalizedWallet = normalizeWalletAddress(
+        walletAddress || userProfile.walletAddress,
+      );
 
       if (normalizedWallet) {
         await AsyncStorage.setItem(CACHED_WALLET_KEY, normalizedWallet);
@@ -138,25 +157,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         await AsyncStorage.removeItem(CACHED_WALLET_KEY);
       }
 
-      setUser(
-        normalizedWallet
-          ? {
-              walletAddress: normalizedWallet,
-            }
-          : {},
-      );
+      setUser({
+        ...userProfile,
+        walletAddress: normalizedWallet,
+      });
 
       setIsAuthenticated(true);
     },
     [],
   );
 
-  /**
-   * Update the locally cached wallet address.
-   *
-   * This is intentionally NOT used as signing authority.
-   * It is only application/session context.
-   */
   const updateWalletAddress = useCallback(
     async (walletAddress: string): Promise<void> => {
       const normalizedWallet = normalizeWalletAddress(walletAddress);
@@ -175,9 +185,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [],
   );
 
-  /**
-   * Completely clear the mobile Web2 session.
-   */
   const logout = useCallback(async (): Promise<void> => {
     try {
       await Promise.all([

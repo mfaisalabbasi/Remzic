@@ -1,147 +1,153 @@
+// src/components/investment/InvestmentStatusView.tsx
 import React from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
   View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 
-type Status = 'PROCESSING' | 'CONFIRMED' | 'FAILED';
+const PALETTE = {
+  bg: '#080C0A',
+  textMain: '#FFFFFF',
+  textMuted: '#94A3B8',
+  accent: '#34D399',
+};
 
 interface InvestmentStatusViewProps {
-  status: Status;
-  message?: string;
-  onRetry?: () => void;
-  onDone?: () => void;
+  flowState: 'PROCESSING' | 'CONFIRMED' | 'FAILED';
+  statusMessage: string;
+  numericAmount: number;
+  propertyTitle: string;
+  insetsTop: number;
+  onNavigateHome: () => void;
+  onRetry: () => void;
 }
 
-export default function InvestmentStatusView({
-  status,
-  message,
+export const InvestmentStatusView = ({
+  flowState,
+  statusMessage,
+  numericAmount,
+  propertyTitle,
+  insetsTop,
+  onNavigateHome,
   onRetry,
-  onDone,
-}: InvestmentStatusViewProps) {
-  if (status === 'PROCESSING') {
+}: InvestmentStatusViewProps) => {
+  if (flowState === 'PROCESSING') {
     return (
-      <View style={styles.container}>
-        <View style={styles.iconCircle}>
-          <ActivityIndicator size="large" color="#B38A3D" />
-        </View>
-
-        <Text style={styles.title}>Processing Investment</Text>
-
-        <Text style={styles.message}>
-          {message ||
-            'Your investment is being processed. Please do not close the app.'}
+      <View
+        style={[
+          styles.container,
+          styles.centeredContainer,
+          { paddingTop: insetsTop },
+        ]}
+      >
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator
+          size="large"
+          color={PALETTE.accent}
+          style={styles.stateLoader}
+        />
+        <Text style={styles.stateTitle}>Processing Allocation</Text>
+        <Text style={styles.stateSubtitle}>
+          {statusMessage ||
+            'Please wait while Remzik verifies your investment.'}
         </Text>
       </View>
     );
   }
 
-  if (status === 'CONFIRMED') {
+  if (flowState === 'CONFIRMED') {
     return (
-      <View style={styles.container}>
-        <View style={[styles.iconCircle, styles.successCircle]}>
-          <Text style={styles.successIcon}>✓</Text>
-        </View>
-
-        <Text style={styles.title}>Investment Confirmed</Text>
-
-        <Text style={styles.message}>
-          {message || 'Your investment has been successfully confirmed.'}
+      <View
+        style={[
+          styles.container,
+          styles.centeredContainer,
+          { paddingTop: insetsTop },
+        ]}
+      >
+        <StatusBar barStyle="light-content" />
+        <Text style={styles.successIcon}>🎉</Text>
+        <Text style={styles.stateTitle}>Allocation Secured</Text>
+        <Text style={styles.stateSubtitle}>
+          You have successfully allocated ${numericAmount.toLocaleString()} into{' '}
+          {propertyTitle}.
         </Text>
-
-        {onDone && (
-          <Pressable style={styles.primaryButton} onPress={onDone}>
-            <Text style={styles.primaryButtonText}>Done</Text>
-          </Pressable>
-        )}
+        <TouchableOpacity
+          style={styles.continueButton}
+          onPress={onNavigateHome}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.continueButtonText}>View Portfolio</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={[styles.iconCircle, styles.errorCircle]}>
-        <Text style={styles.errorIcon}>!</Text>
+  if (flowState === 'FAILED') {
+    return (
+      <View
+        style={[
+          styles.container,
+          styles.centeredContainer,
+          { paddingTop: insetsTop },
+        ]}
+      >
+        <StatusBar barStyle="light-content" />
+        <Text style={styles.errorIcon}>⚠️</Text>
+        <Text style={styles.stateTitle}>Allocation Requires Attention</Text>
+        <Text style={styles.stateSubtitle}>
+          {statusMessage || 'The investment could not be completed.'}
+        </Text>
+        <TouchableOpacity
+          style={[styles.continueButton, styles.retryButton]}
+          onPress={onRetry}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.continueButtonText}>Try Again</Text>
+        </TouchableOpacity>
       </View>
+    );
+  }
 
-      <Text style={styles.title}>Investment Failed</Text>
-
-      <Text style={styles.message}>
-        {message || 'We could not complete your investment.'}
-      </Text>
-
-      {onRetry && (
-        <Pressable style={styles.primaryButton} onPress={onRetry}>
-          <Text style={styles.primaryButtonText}>Try Again</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
+  return null;
+};
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
+  container: { flex: 1, backgroundColor: PALETTE.bg },
+  centeredContainer: {
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    backgroundColor: '#F7F9F8',
+    alignItems: 'center',
+    paddingHorizontal: 30,
   },
-  iconCircle: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F3EFE6',
+  stateLoader: { marginBottom: 20 },
+  stateTitle: {
+    color: PALETTE.textMain,
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  stateSubtitle: {
+    color: PALETTE.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 8,
     marginBottom: 24,
   },
-  successCircle: {
-    backgroundColor: '#E5F1EB',
-  },
-  errorCircle: {
-    backgroundColor: '#F7E7E5',
-  },
-  successIcon: {
-    fontSize: 38,
-    fontWeight: '700',
-    color: '#2D7657',
-  },
-  errorIcon: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#B94A48',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#102A24',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  message: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: '#69736F',
-    textAlign: 'center',
-    maxWidth: 340,
-  },
-  primaryButton: {
-    marginTop: 28,
-    minWidth: 180,
-    height: 50,
-    borderRadius: 13,
-    backgroundColor: '#123C32',
-    alignItems: 'center',
+  successIcon: { fontSize: 48 },
+  errorIcon: { fontSize: 48 },
+  continueButton: {
+    backgroundColor: PALETTE.accent,
+    height: 52,
+    borderRadius: 14,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    alignItems: 'center',
+    width: '100%',
   },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  continueButtonText: { color: PALETTE.bg, fontSize: 15, fontWeight: '700' },
+  retryButton: { backgroundColor: PALETTE.accent, width: '100%' },
 });

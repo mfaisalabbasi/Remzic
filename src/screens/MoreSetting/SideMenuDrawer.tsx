@@ -1,3 +1,4 @@
+// src/components/navigation/SideMenuDrawer.tsx
 import React from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
+import { useAuth } from '../../navigation/AuthContext';
 
 // --- Dedicated Inline SVG Vector Icons for Menu ---
 const HomeIcon = ({ size = 18, color = Colors.accent }) => (
@@ -200,7 +202,6 @@ const CloseIcon = ({ size = 16, color = Colors.white }) => (
   </Svg>
 );
 
-// Helper mapping to return clean SVG components instead of basic emojis
 const renderMenuIcon = (label: string) => {
   switch (label) {
     case 'Home':
@@ -240,18 +241,29 @@ const menuItems = [
   { label: 'Wallet Recovery', screen: 'WalletRecovery', isTab: false },
   { label: 'Notifications', screen: 'Notifications', isTab: false, badge: '1' },
   { label: 'Profile', screen: 'Profile', isTab: false },
-  { label: 'Settings', screen: 'Profile', isTab: false }, // Falls back safely to Profile
-  { label: 'Help & Support', screen: 'Profile', isTab: false }, // Falls back safely to Profile
+  { label: 'Settings', screen: 'Profile', isTab: false },
+  { label: 'Help & Support', screen: 'Profile', isTab: false },
 ];
 
 export const SideMenuDrawer = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  // Resolve dynamic user details matching database records
+  const name = user?.name || user?.user?.name || user?.fullName || 'Investor';
+  const email = user?.email || user?.user?.email || 'investor@remzik.com';
+  const role = user?.role || user?.user?.role || 'INVESTOR';
+
+  // Compute initials dynamically (e.g. "Muhammad Faisal" -> "MF")
+  const initials = name
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   const handleNavigation = (item: (typeof menuItems)[0]) => {
-    // 1. Dismiss the transparent modal drawer
     navigation.goBack();
-
-    // 2. Safely trigger target navigation after modal frame cleanup
     setTimeout(() => {
       if (item.isTab) {
         navigation.navigate('MainTabs', { screen: item.screen });
@@ -265,7 +277,6 @@ export const SideMenuDrawer = ({ navigation }: { navigation: any }) => {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* Top Drawer Header with Close Button */}
       <View style={styles.drawerHeader}>
         <TouchableOpacity
           style={styles.closeButton}
@@ -276,21 +287,20 @@ export const SideMenuDrawer = ({ navigation }: { navigation: any }) => {
         </TouchableOpacity>
       </View>
 
-      {/* User Profile Summary Card */}
+      {/* Dynamic User Profile Summary Card */}
       <View style={styles.userCard}>
         <View style={styles.avatarPlaceholder}>
-          <Text style={styles.avatarInitials}>MF</Text>
+          <Text style={styles.avatarInitials}>{initials}</Text>
         </View>
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>Muhammad Faisal</Text>
-          <Text style={styles.userEmail}>faisal@remzik.com</Text>
+          <Text style={styles.userName}>{name}</Text>
+          <Text style={styles.userEmail}>{email}</Text>
           <View style={styles.verifiedBadge}>
-            <Text style={styles.verifiedText}>Verified Investor • Tier 2</Text>
+            <Text style={styles.verifiedText}>Verified {role} • Active</Text>
           </View>
         </View>
       </View>
 
-      {/* Navigation Links Scrollable Area */}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -328,7 +338,6 @@ export const SideMenuDrawer = ({ navigation }: { navigation: any }) => {
         ))}
       </ScrollView>
 
-      {/* Footer Brand Info */}
       <View style={styles.drawerFooter}>
         <View style={styles.footerBrandRow}>
           <View style={styles.footerLogoBadge}>

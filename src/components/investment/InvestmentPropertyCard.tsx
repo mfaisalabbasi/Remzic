@@ -1,90 +1,84 @@
+// src/components/investment/InvestmentPropertyCard.tsx
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 interface InvestmentPropertyCardProps {
-  title: string;
-  tokenPrice: number;
-  yieldRate: number;
+  property: {
+    title: string;
+    yieldRate: number;
+    unitPrice: number;
+  };
 }
 
-export default function InvestmentPropertyCard({
-  title,
-  tokenPrice,
-  yieldRate,
-}: InvestmentPropertyCardProps) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.content}>
-        <Text style={styles.label}>INVESTMENT PROPERTY</Text>
-        <Text style={styles.title}>{title}</Text>
+export const InvestmentPropertyCard = ({
+  property,
+}: InvestmentPropertyCardProps) => (
+  <View style={styles.propertyMiniCard}>
+    <View style={styles.propertyThumbPlaceholder}>
+      <Text style={styles.propertyThumbTag}>🏢</Text>
+    </View>
 
-        <View style={styles.stats}>
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>Token Price</Text>
-            <Text style={styles.statValue}>${tokenPrice.toLocaleString()}</Text>
-          </View>
+    <View style={styles.propertyInfo}>
+      <Text style={styles.propertyName}>{property.title}</Text>
 
-          <View style={styles.divider} />
+      <View style={styles.yieldBadgeRow}>
+        <View style={styles.liveIndicatorDot} />
 
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>Expected Yield</Text>
-            <Text style={styles.yieldValue}>{yieldRate}%</Text>
-          </View>
-        </View>
+        <Text style={styles.propertyYield}>
+          {(property.yieldRate * 100).toFixed(1)}% APY • ${property.unitPrice}
+          /token
+        </Text>
       </View>
     </View>
-  );
-}
+  </View>
+);
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  content: {
-    padding: 20,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 21,
-    fontWeight: '700',
-    color: '#102A24',
-    marginBottom: 20,
-  },
-  stats: {
+  propertyMiniCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#111816',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.18)',
+    marginBottom: 24,
+    gap: 14,
   },
-  stat: {
+  propertyThumbPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#18221F',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  propertyThumbTag: {
+    fontSize: 22,
+  },
+  propertyInfo: {
     flex: 1,
   },
-  statLabel: {
+  propertyName: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  yieldBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  liveIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+  },
+  propertyYield: {
+    color: '#34D399',
     fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 5,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#102A24',
-  },
-  yieldValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#B38A3D',
-  },
-  divider: {
-    width: 1,
-    height: 34,
-    backgroundColor: '#E5E7EB',
-    marginHorizontal: 18,
+    fontWeight: '600',
   },
 });

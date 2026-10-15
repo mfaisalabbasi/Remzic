@@ -1,25 +1,28 @@
+// src/screens/investment/InvestmentFlowScreen.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert as RNAlert,
-  Modal,
   Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
 
 import { Colors } from '../../theme/colors';
 import { investmentApi } from '../../services/api/investmentApi';
 
-type FlowState = 'IDLE' | 'SUBMITTING' | 'PROCESSING' | 'CONFIRMED' | 'FAILED';
+import { InvestmentStatusView } from '../../components/investment/InvestmentStatusView';
+import { InvestmentHeader } from '../../components/investment/InvestmentHeader';
+import { InvestmentPropertyCard } from '../../components/investment/InvestmentPropertyCard';
+import { InvestmentFormCard } from '../../components/investment/InvestmentFormCard';
+import { InvestmentSigningModal } from '../../components/investment/InvestmentSigningModal';
 
+type FlowState = 'IDLE' | 'SUBMITTING' | 'PROCESSING' | 'CONFIRMED' | 'FAILED';
 type SettlementMode = 'OFF_CHAIN' | 'ON_CHAIN';
 
 interface InvestmentProperty {
@@ -49,7 +52,6 @@ interface WebViewBridgeMessage {
 const getConfiguredWebUrl = (): string | undefined => {
   try {
     const value = (globalThis as any)?.process?.env?.EXPO_PUBLIC_WEB_URL;
-
     if (typeof value === 'string' && value.trim()) {
       return value.trim().replace(/\/+$/, '');
     }
@@ -66,10 +68,7 @@ const getConfiguredWebUrl = (): string | undefined => {
 
 const getNextJsHost = (): string => {
   const configured = getConfiguredWebUrl();
-
-  if (configured) {
-    return configured;
-  }
+  if (configured) return configured;
 
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     return Platform.OS === 'android'
@@ -99,38 +98,22 @@ const isValidContractAddress = (value?: string | null): boolean =>
   isValidWalletAddress(value);
 
 const normalizeChainId = (value?: number | string | null): number | null => {
-  if (value === undefined || value === null || value === '') {
-    return null;
-  }
-
+  if (value === undefined || value === null || value === '') return null;
   const numberValue = typeof value === 'number' ? value : Number(value);
-
   return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : null;
 };
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
   const typed = error as {
-    response?: {
-      data?: {
-        message?: string | string[];
-      };
-    };
+    response?: { data?: { message?: string | string[] } };
     message?: string;
   };
-
   const message = typed?.response?.data?.message;
 
-  if (Array.isArray(message) && message.length) {
-    return message.join(', ');
-  }
-
-  if (typeof message === 'string' && message.trim()) {
-    return message.trim();
-  }
-
-  if (typeof typed?.message === 'string' && typed.message.trim()) {
+  if (Array.isArray(message) && message.length) return message.join(', ');
+  if (typeof message === 'string' && message.trim()) return message.trim();
+  if (typeof typed?.message === 'string' && typed.message.trim())
     return typed.message.trim();
-  }
 
   return fallback;
 };
@@ -158,7 +141,6 @@ const isAllowedWebViewUrl = (url: string, configuredHost: string): boolean => {
       ) {
         return true;
       }
-
       return false;
     }
 
@@ -178,9 +160,7 @@ export const InvestmentFlowScreen = ({
   route,
 }: {
   navigation: any;
-  route: {
-    params?: InvestmentRouteParams;
-  };
+  route: { params?: InvestmentRouteParams };
 }) => {
   const insets = useSafeAreaInsets();
 
@@ -196,7 +176,6 @@ export const InvestmentFlowScreen = ({
 
   const [settlementMode, setSettlementMode] =
     useState<SettlementMode>('OFF_CHAIN');
-
   const [flowState, setFlowState] = useState<FlowState>('IDLE');
   const [statusMessage, setStatusMessage] = useState('');
 
@@ -204,7 +183,6 @@ export const InvestmentFlowScreen = ({
   const assetId = rawProperty.id || rawProperty.assetId;
   const tokenCount = route?.params?.tokenCount;
 
-  // DB Alignment: unitPrice mapping
   const unitPriceRaw = rawProperty.unitPrice ?? rawProperty.tokenPrice ?? 10;
   const parsedUnitPrice = Number(unitPriceRaw);
   const validUnitPrice =
@@ -212,7 +190,6 @@ export const InvestmentFlowScreen = ({
       ? parsedUnitPrice
       : 10;
 
-  // DB Alignment: expectedYield mapping
   const yieldRaw =
     rawProperty.expectedYield ??
     rawProperty.yield ??
@@ -233,7 +210,6 @@ export const InvestmentFlowScreen = ({
     yieldRate: validYieldRate,
   };
 
-  // Safe initial amount that defaults to 1 full token price instead of 0
   const initialAmount =
     tokenCount && Number.isFinite(Number(tokenCount)) && Number(tokenCount) > 0
       ? (Number(tokenCount) * property.unitPrice).toString()
@@ -241,7 +217,6 @@ export const InvestmentFlowScreen = ({
 
   const [amount, setAmount] = useState(initialAmount);
 
-  // Fallback to minInvestment if input is empty or parsed as 0
   const parsedNumericAmount = Number.parseFloat(amount);
   const numericAmount =
     Number.isFinite(parsedNumericAmount) && parsedNumericAmount > 0
@@ -252,7 +227,6 @@ export const InvestmentFlowScreen = ({
     property.unitPrice > 0
       ? (numericAmount / property.unitPrice).toFixed(2)
       : '0.00';
-
   const estimatedYieldAnnual = (numericAmount * property.yieldRate).toFixed(2);
 
   const rawAvailable =
@@ -273,11 +247,9 @@ export const InvestmentFlowScreen = ({
 
   useEffect(() => {
     mountedRef.current = true;
-
     return () => {
       mountedRef.current = false;
       pollingGenerationRef.current += 1;
-
       if (webViewTimeoutRef.current) {
         clearTimeout(webViewTimeoutRef.current);
       }
@@ -297,15 +269,11 @@ export const InvestmentFlowScreen = ({
   }, [route?.params?.tokenCount, property.minInvestment, property.unitPrice]);
 
   const setSafeFlowState = useCallback((state: FlowState) => {
-    if (mountedRef.current) {
-      setFlowState(state);
-    }
+    if (mountedRef.current) setFlowState(state);
   }, []);
 
   const setSafeStatus = useCallback((message: string) => {
-    if (mountedRef.current) {
-      setStatusMessage(message);
-    }
+    if (mountedRef.current) setStatusMessage(message);
   }, []);
 
   const cancelPolling = useCallback(() => {
@@ -332,7 +300,6 @@ export const InvestmentFlowScreen = ({
 
   const startWebViewTimeout = useCallback(() => {
     clearWebViewTimeout();
-
     webViewTimeoutRef.current = setTimeout(() => {
       failWebView(
         'The secure signing service took too long to load. Please try again.',
@@ -358,30 +325,23 @@ export const InvestmentFlowScreen = ({
       const generation = ++pollingGenerationRef.current;
 
       for (let attempt = 0; attempt < 30; attempt += 1) {
-        if (
-          !mountedRef.current ||
-          pollingGenerationRef.current !== generation
-        ) {
+        if (!mountedRef.current || pollingGenerationRef.current !== generation)
           return;
-        }
 
         try {
           const response = (await investmentApi.getLiveStatus(
             investmentId,
           )) as any;
-
           if (
             !mountedRef.current ||
             pollingGenerationRef.current !== generation
-          ) {
+          )
             return;
-          }
 
           const rawStatus =
             response?.status ||
             response?.data?.status ||
             response?.investment?.status;
-
           const status =
             typeof rawStatus === 'string' ? rawStatus.toUpperCase().trim() : '';
 
@@ -456,35 +416,31 @@ export const InvestmentFlowScreen = ({
         'The backend did not return a valid investment identifier.',
       );
     }
-
     if (!intent.txPayload || typeof intent.txPayload !== 'object') {
       throw new Error(
         'The backend did not return a valid transaction payload.',
       );
     }
-
     if (!isValidContractAddress(intent.txPayload.to)) {
       throw new Error('The backend returned an invalid transaction target.');
     }
-
     if (
       intent.txPayload.data !== undefined &&
       !isValidHexData(intent.txPayload.data)
     ) {
       throw new Error('The backend returned invalid transaction calldata.');
     }
-
     if (
       intent.txPayload.value !== undefined &&
       typeof intent.txPayload.value !== 'string'
     ) {
       throw new Error('The backend returned an invalid transaction value.');
     }
-
-    if (intent.txPayload.chainId !== undefined) {
-      if (!normalizeChainId(intent.txPayload.chainId)) {
-        throw new Error('The backend returned an invalid blockchain chain ID.');
-      }
+    if (
+      intent.txPayload.chainId !== undefined &&
+      !normalizeChainId(intent.txPayload.chainId)
+    ) {
+      throw new Error('The backend returned an invalid blockchain chain ID.');
     }
 
     investmentIdRef.current = intent.investmentId;
@@ -510,9 +466,7 @@ export const InvestmentFlowScreen = ({
       walletParam +
       `&autoAuth=true`;
 
-    if (!mountedRef.current) {
-      return;
-    }
+    if (!mountedRef.current) return;
 
     setWebViewUrl(targetUrl);
     setWebViewLoading(true);
@@ -550,7 +504,6 @@ export const InvestmentFlowScreen = ({
     }
 
     const investmentId = result?.id || result?.investmentId;
-
     if (!isValidInvestmentId(investmentId)) {
       throw new Error(
         'The backend did not return a valid investment identifier.',
@@ -558,7 +511,6 @@ export const InvestmentFlowScreen = ({
     }
 
     investmentIdRef.current = investmentId;
-
     setSafeFlowState('PROCESSING');
     setSafeStatus(
       'Your investment is being secured and processed through the Remzik ledger...',
@@ -574,9 +526,7 @@ export const InvestmentFlowScreen = ({
   ]);
 
   const handleConfirmInvestment = useCallback(async () => {
-    if (submittingRef.current) {
-      return;
-    }
+    if (submittingRef.current) return;
 
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       RNAlert.alert(
@@ -596,7 +546,6 @@ export const InvestmentFlowScreen = ({
 
     try {
       setSafeFlowState('SUBMITTING');
-
       if (settlementMode === 'ON_CHAIN') {
         await startOnChainInvestment();
       } else {
@@ -622,20 +571,12 @@ export const InvestmentFlowScreen = ({
   ]);
 
   const handleWebViewMessage = useCallback(
-    async (event: {
-      nativeEvent?: {
-        data?: string;
-      };
-    }) => {
+    async (event: { nativeEvent?: { data?: string } }) => {
       try {
         const raw = event.nativeEvent?.data;
-
-        if (!raw?.trim()) {
-          return;
-        }
+        if (!raw?.trim()) return;
 
         let data: WebViewBridgeMessage;
-
         try {
           data = JSON.parse(raw);
         } catch {
@@ -643,10 +584,7 @@ export const InvestmentFlowScreen = ({
         }
 
         const investmentId = investmentIdRef.current;
-
-        if (!isValidInvestmentId(investmentId)) {
-          return;
-        }
+        if (!isValidInvestmentId(investmentId)) return;
 
         if (data.type === 'TX_SUCCESS' || data.type === 'TX_FAILED') {
           if (data.investmentId !== investmentId) {
@@ -658,7 +596,10 @@ export const InvestmentFlowScreen = ({
         }
 
         if (data.type === 'TX_SUCCESS') {
-          if (typeof data.txHash !== 'string') {
+          if (
+            typeof data.txHash !== 'string' ||
+            !isValidTxHash(data.txHash.trim())
+          ) {
             failWebView(
               'The signing service returned an invalid transaction hash.',
             );
@@ -666,14 +607,6 @@ export const InvestmentFlowScreen = ({
           }
 
           const txHash = data.txHash.trim();
-
-          if (!isValidTxHash(txHash)) {
-            failWebView(
-              'The signing service returned an invalid transaction hash.',
-            );
-            return;
-          }
-
           clearWebViewTimeout();
           setWebViewLoading(false);
           setIsWebViewVisible(false);
@@ -735,9 +668,7 @@ export const InvestmentFlowScreen = ({
   const handleRetry = useCallback(() => {
     clearWebViewTimeout();
     cancelPolling();
-
     investmentIdRef.current = null;
-
     setWebViewLoading(false);
     setIsWebViewVisible(false);
     setWebViewUrl('');
@@ -745,91 +676,21 @@ export const InvestmentFlowScreen = ({
     setSafeFlowState('IDLE');
   }, [cancelPolling, clearWebViewTimeout, setSafeFlowState]);
 
-  if (flowState === 'PROCESSING') {
+  if (
+    flowState === 'PROCESSING' ||
+    flowState === 'CONFIRMED' ||
+    flowState === 'FAILED'
+  ) {
     return (
-      <View
-        style={[
-          styles.container,
-          styles.centeredContainer,
-          { paddingTop: insets.top },
-        ]}
-      >
-        <StatusBar barStyle="light-content" />
-
-        <ActivityIndicator
-          size="large"
-          color="#34D399"
-          style={styles.stateLoader}
-        />
-
-        <Text style={styles.stateTitle}>Processing Allocation</Text>
-
-        <Text style={styles.stateSubtitle}>
-          {statusMessage ||
-            'Please wait while Remzik verifies your investment.'}
-        </Text>
-      </View>
-    );
-  }
-
-  if (flowState === 'CONFIRMED') {
-    return (
-      <View
-        style={[
-          styles.container,
-          styles.centeredContainer,
-          { paddingTop: insets.top },
-        ]}
-      >
-        <StatusBar barStyle="light-content" />
-
-        <Text style={styles.successIcon}>🎉</Text>
-
-        <Text style={styles.stateTitle}>Allocation Secured</Text>
-
-        <Text style={styles.stateSubtitle}>
-          You have successfully allocated ${numericAmount.toLocaleString()} into{' '}
-          {property.title}.
-        </Text>
-
-        <TouchableOpacity
-          style={styles.continueButton}
-          onPress={() => navigation.navigate('MainTabs')} // <-- Changed from 'Portfolio' to 'MainTabs'
-          activeOpacity={0.85}
-        >
-          <Text style={styles.continueButtonText}>View Portfolio</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (flowState === 'FAILED') {
-    return (
-      <View
-        style={[
-          styles.container,
-          styles.centeredContainer,
-          { paddingTop: insets.top },
-        ]}
-      >
-        <StatusBar barStyle="light-content" />
-
-        <Text style={styles.errorIcon}>⚠️</Text>
-
-        <Text style={styles.stateTitle}>Allocation Requires Attention</Text>
-
-        <Text style={styles.stateSubtitle}>
-          {statusMessage || 'The investment could not be completed.'}
-        </Text>
-
-        <TouchableOpacity
-          style={[styles.continueButton, styles.retryButton]}
-          onPress={handleRetry}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.continueButtonText}>Try Again</Text>
-        </TouchableOpacity>
-      </View>
+      <InvestmentStatusView
+        flowState={flowState}
+        statusMessage={statusMessage}
+        numericAmount={numericAmount}
+        propertyTitle={property.title}
+        insetsTop={insets.top}
+        onNavigateHome={() => navigation.navigate('MainTabs')}
+        onRetry={handleRetry}
+      />
     );
   }
 
@@ -839,177 +700,32 @@ export const InvestmentFlowScreen = ({
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-          disabled={submitting}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Asset Allocation</Text>
-
-        <View style={styles.headerSpacer} />
-      </View>
+      <InvestmentHeader
+        onBack={() => navigation.goBack()}
+        submitting={submitting}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.propertyMiniCard}>
-          <View style={styles.propertyThumbPlaceholder}>
-            <Text style={styles.propertyThumbTag}>🏢</Text>
-          </View>
+        <InvestmentPropertyCard property={property} />
 
-          <View style={styles.propertyInfo}>
-            <Text style={styles.propertyName}>{property.title}</Text>
-
-            <View style={styles.yieldBadgeRow}>
-              <View style={styles.liveIndicatorDot} />
-
-              <Text style={styles.propertyYield}>
-                {(property.yieldRate * 100).toFixed(1)}% APY • $
-                {property.unitPrice}/token
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Select Settlement Method</Text>
-
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[
-                styles.tabButton,
-                settlementMode === 'OFF_CHAIN' && styles.tabButtonActive,
-              ]}
-              onPress={() => setSettlementMode('OFF_CHAIN')}
-              disabled={submitting}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  settlementMode === 'OFF_CHAIN' && styles.tabTextActive,
-                ]}
-              >
-                Internal Balance
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.tabButton,
-                settlementMode === 'ON_CHAIN' && styles.tabButtonActive,
-              ]}
-              onPress={() => setSettlementMode('ON_CHAIN')}
-              disabled={submitting}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  settlementMode === 'ON_CHAIN' && styles.tabTextActive,
-                ]}
-              >
-                Web3 On-Chain
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.inputContainer}>
-          <View style={styles.inputLabelRow}>
-            <Text style={styles.inputLabel}>Enter Allocation Value</Text>
-
-            <Text style={styles.inputLimitLabel}>
-              Min: ${property.minInvestment} (1 Token)
-            </Text>
-          </View>
-
-          <View style={styles.textInputWrapper}>
-            <Text style={styles.currencySymbol}>$</Text>
-
-            <TextInput
-              style={styles.textInput}
-              keyboardType="decimal-pad"
-              value={amount}
-              onChangeText={setAmount}
-              placeholder={property.minInvestment.toString()}
-              placeholderTextColor="#475569"
-              selectionColor="#34D399"
-              editable={!submitting}
-              accessibilityLabel="Investment amount"
-            />
-
-            <View style={styles.currencyBadge}>
-              <Text style={styles.currencyBadgeText}>USD</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.presetsRow}>
-          {presetAmounts.map(value => (
-            <TouchableOpacity
-              key={value}
-              style={[
-                styles.presetButton,
-                numericAmount === value && styles.presetButtonActive,
-              ]}
-              onPress={() => setAmount(value.toString())}
-              disabled={submitting}
-            >
-              <Text
-                style={[
-                  styles.presetText,
-                  numericAmount === value && styles.presetTextActive,
-                ]}
-              >
-                ${value.toLocaleString()}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.breakdownCard}>
-          <Text style={styles.breakdownHeaderTitle}>Allocation Breakdown</Text>
-
-          <View style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Estimated Tokens</Text>
-
-            <Text style={styles.breakdownValue}>{estimatedTokens} RWA</Text>
-          </View>
-
-          <View style={styles.breakdownDivider} />
-
-          <View style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Estimated Annual Yield</Text>
-
-            <Text style={styles.breakdownValueGreen}>
-              +${estimatedYieldAnnual}
-            </Text>
-          </View>
-
-          <View style={styles.breakdownDivider} />
-
-          <View style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Available Vault Units</Text>
-
-            <Text style={styles.breakdownValue}>{totalUnitsAvailable}</Text>
-          </View>
-        </View>
-
-        {submitting && (
-          <View style={styles.submittingStatus}>
-            <ActivityIndicator size="small" color="#34D399" />
-
-            <Text style={styles.submittingText}>
-              {statusMessage || 'Preparing your investment...'}
-            </Text>
-          </View>
-        )}
+        <InvestmentFormCard
+          settlementMode={settlementMode}
+          setSettlementMode={setSettlementMode}
+          submitting={submitting}
+          amount={amount}
+          setAmount={setAmount}
+          numericAmount={numericAmount}
+          minInvestment={property.minInvestment}
+          presetAmounts={presetAmounts}
+          estimatedTokens={estimatedTokens}
+          estimatedYieldAnnual={estimatedYieldAnnual}
+          totalUnitsAvailable={totalUnitsAvailable}
+          statusMessage={statusMessage}
+        />
       </ScrollView>
 
       <View
@@ -1037,100 +753,21 @@ export const InvestmentFlowScreen = ({
         </TouchableOpacity>
       </View>
 
-      <Modal
-        visible={isWebViewVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handleDismissWebView}
-      >
-        <View style={styles.webViewModalContainer}>
-          <View style={styles.modalGrabberContainer}>
-            <View style={styles.modalGrabberHandle} />
-          </View>
-
-          <View style={styles.webViewHeader}>
-            <View style={styles.web3BadgeWrapper}>
-              <View style={styles.liveIndicatorDot} />
-
-              <Text style={styles.web3BadgeText}>SECURE ENCLAVE</Text>
-            </View>
-
-            <Text style={styles.webViewHeaderTitle}>
-              Web3 Transaction Signer
-            </Text>
-
-            <TouchableOpacity
-              onPress={handleDismissWebView}
-              style={styles.webViewCloseButton}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.webViewCloseText}>Dismiss</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.webViewWrapper}>
-            {webViewUrl && (
-              <WebView
-                source={{ uri: webViewUrl }}
-                onMessage={handleWebViewMessage}
-                javaScriptEnabled
-                domStorageEnabled
-                sharedCookiesEnabled
-                thirdPartyCookiesEnabled
-                scrollEnabled
-                bounces={false}
-                setSupportMultipleWindows={false}
-                originWhitelist={[
-                  'https://*',
-                  'http://*',
-                  'http://localhost:*',
-                  'http://10.0.2.2:*',
-                  'http://192.168.1.239:*',
-                ]}
-                style={styles.webView}
-                containerStyle={styles.webView}
-                onLoadStart={() => {
-                  setWebViewLoading(true);
-                  startWebViewTimeout();
-                }}
-                onLoad={handleLoadEnd}
-                onLoadEnd={handleLoadEnd}
-                onError={event =>
-                  failWebView(
-                    `Unable to load signing service: ${
-                      event.nativeEvent.description || 'Connection refused'
-                    }`,
-                  )
-                }
-                onHttpError={event =>
-                  failWebView(
-                    `Secure signing service returned HTTP ${event.nativeEvent.statusCode}.`,
-                  )
-                }
-                onShouldStartLoadWithRequest={request => {
-                  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-                    return true;
-                  }
-                  return isAllowedWebViewUrl(
-                    request?.url || '',
-                    configuredWebHost,
-                  );
-                }}
-              />
-            )}
-
-            {webViewLoading && (
-              <View pointerEvents="none" style={styles.webViewLoadingOverlay}>
-                <ActivityIndicator size="large" color="#34D399" />
-
-                <Text style={styles.webViewLoadingText}>
-                  Establishing secure signing session...
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <InvestmentSigningModal
+        isVisible={isWebViewVisible}
+        webViewUrl={webViewUrl}
+        webViewLoading={webViewLoading}
+        configuredWebHost={configuredWebHost}
+        onDismiss={handleDismissWebView}
+        onMessage={handleWebViewMessage}
+        onLoadStart={() => {
+          setWebViewLoading(true);
+          startWebViewTimeout();
+        }}
+        onLoadEnd={handleLoadEnd}
+        onFail={failWebView}
+        isAllowedWebViewUrl={isAllowedWebViewUrl}
+      />
     </View>
   );
 };
@@ -1140,278 +777,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#080C0A',
   },
-  centeredContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 30,
-  },
-  stateLoader: {
-    marginBottom: 20,
-  },
-  stateTitle: {
-    color: Colors.white,
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  stateSubtitle: {
-    color: '#94A3B8',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  successIcon: {
-    fontSize: 48,
-  },
-  errorIcon: {
-    fontSize: 48,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#111816',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.2)',
-  },
-  backIcon: {
-    color: Colors.white,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  headerTitle: {
-    color: Colors.white,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  headerSpacer: {
-    width: 38,
-  },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 30,
-  },
-  propertyMiniCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111816',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.18)',
-    marginBottom: 24,
-    gap: 14,
-  },
-  propertyThumbPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#18221F',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  propertyThumbTag: {
-    fontSize: 22,
-  },
-  propertyInfo: {
-    flex: 1,
-  },
-  propertyName: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  yieldBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  liveIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#34D399',
-  },
-  propertyYield: {
-    color: '#34D399',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-    marginBottom: 8,
-  },
-  inputLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  inputLimitLabel: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#111816',
-    borderRadius: 12,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.15)',
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 9,
-  },
-  tabButtonActive: {
-    backgroundColor: '#1A2E28',
-    borderWidth: 1,
-    borderColor: 'rgba(52,211,153,0.3)',
-  },
-  tabText: {
-    color: '#64748B',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  tabTextActive: {
-    color: '#34D399',
-  },
-  textInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111816',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.2)',
-    paddingHorizontal: 16,
-    height: 56,
-  },
-  currencySymbol: {
-    color: '#34D399',
-    fontSize: 18,
-    fontWeight: '700',
-    marginRight: 8,
-  },
-  textInput: {
-    flex: 1,
-    color: Colors.white,
-    fontSize: 18,
-    fontWeight: '700',
-    padding: 0,
-  },
-  currencyBadge: {
-    backgroundColor: '#18221F',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.15)',
-  },
-  currencyBadgeText: {
-    color: '#34D399',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  presetsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 24,
-  },
-  presetButton: {
-    flex: 1,
-    backgroundColor: '#111816',
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.12)',
-  },
-  presetButtonActive: {
-    backgroundColor: '#1A2E28',
-    borderColor: 'rgba(52,211,153,0.35)',
-  },
-  presetText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  presetTextActive: {
-    color: '#34D399',
-  },
-  breakdownCard: {
-    backgroundColor: '#111816',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.15)',
-    marginBottom: 24,
-  },
-  breakdownHeaderTitle: {
-    color: Colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 14,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  breakdownLabel: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  breakdownValue: {
-    color: Colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  breakdownValueGreen: {
-    color: '#34D399',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  breakdownDivider: {
-    height: 1,
-    backgroundColor: '#18221F',
-    marginVertical: 6,
-  },
-  submittingStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 4,
-  },
-  submittingText: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '500',
   },
   footerContainer: {
     paddingHorizontal: 20,
@@ -1434,94 +803,5 @@ const styles = StyleSheet.create({
     color: '#080C0A',
     fontSize: 15,
     fontWeight: '700',
-  },
-  retryButton: {
-    backgroundColor: '#34D399',
-    width: '100%',
-  },
-  webViewModalContainer: {
-    flex: 1,
-    backgroundColor: '#080C0A',
-  },
-  modalGrabberContainer: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  modalGrabberHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#2A3B35',
-  },
-  webViewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#111816',
-  },
-  web3BadgeWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111816',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.2)',
-    gap: 6,
-  },
-  web3BadgeText: {
-    color: '#34D399',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  webViewHeaderTitle: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  webViewCloseButton: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  webViewCloseText: {
-    color: '#94A3B8',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  webViewWrapper: {
-    flex: 1,
-    backgroundColor: '#080C0A',
-    position: 'relative',
-  },
-  webView: {
-    flex: 1,
-    backgroundColor: '#080C0A',
-  },
-  webViewLoadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#080C0A',
-    zIndex: 20,
-  },
-  webViewLoadingText: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 12,
-    textAlign: 'center',
   },
 });
