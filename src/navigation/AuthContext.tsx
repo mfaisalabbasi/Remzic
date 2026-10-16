@@ -11,6 +11,7 @@ import { secondaryMarketApi } from '../services/api/secondaryMarketApi';
 
 const ACCESS_TOKEN_KEY = 'accessToken';
 const CACHED_WALLET_KEY = 'cached_walletAddress';
+const USER_DATA_KEY = 'userData'; // 👈 Key for caching user profile
 
 const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
@@ -40,13 +41,10 @@ const normalizeWalletAddress = (
   if (!walletAddress) {
     return undefined;
   }
-
   const normalized = walletAddress.trim();
-
   if (!EVM_ADDRESS_REGEX.test(normalized)) {
     return undefined;
   }
-
   return normalized.toLowerCase();
 };
 
@@ -62,9 +60,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const bootstrapSession = async () => {
       try {
-        const [token, cachedWallet] = await Promise.all([
+        const [token, cachedWallet, cachedUser] = await Promise.all([
           AsyncStorage.getItem(ACCESS_TOKEN_KEY),
           AsyncStorage.getItem(CACHED_WALLET_KEY),
+          AsyncStorage.getItem(USER_DATA_KEY),
         ]);
 
         if (cancelled) {
@@ -74,16 +73,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (token && token.trim().length > 0) {
           setIsAuthenticated(true);
 
-          let userProfile: UserProfile = {};
+          let userProfile: UserProfile = cachedUser
+            ? JSON.parse(cachedUser)
+            : {};
 
           try {
             const remoteUser = await secondaryMarketApi.getMe();
             if (remoteUser) {
               userProfile = remoteUser.user || remoteUser;
+              await AsyncStorage.setItem(
+                USER_DATA_KEY,
+                JSON.stringify(userProfile),
+              );
             }
           } catch (apiErr) {
             console.warn(
-              '[AuthContext] Could not fetch remote profile, falling back to cache:',
+              '[AuthContext] Could not fetch remote profile, using cached profile:',
               apiErr,
             );
           }
@@ -106,7 +111,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             '[AuthContext] Failed to restore mobile session:',
             error,
           );
-
           setIsAuthenticated(false);
           setUser(null);
         }
@@ -139,6 +143,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const remoteUser = await secondaryMarketApi.getMe();
         if (remoteUser) {
           userProfile = remoteUser.user || remoteUser;
+          await AsyncStorage.setItem(
+            USER_DATA_KEY,
+            JSON.stringify(userProfile),
+          );
         }
       } catch (err) {
         console.warn(
@@ -190,6 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await Promise.all([
         AsyncStorage.removeItem(ACCESS_TOKEN_KEY),
         AsyncStorage.removeItem(CACHED_WALLET_KEY),
+        AsyncStorage.removeItem(USER_DATA_KEY),
       ]);
     } catch (error) {
       console.error('[AuthContext] Failed to clear session:', error);

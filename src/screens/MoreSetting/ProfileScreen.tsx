@@ -1,3 +1,4 @@
+// src/screens/MoreSetting/ProfileScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -12,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
-import { useAuth } from '../../navigation/AuthContext'; // ✅ Correct path to exported hook // Import global auth context
+import { useAuth } from '../../navigation/AuthContext';
 
 // --- Dedicated Inline SVG Vector Icons ---
 const ArrowLeftIcon = ({ size = 18, color = Colors.white }) => (
@@ -175,11 +176,24 @@ const LogOutIcon = ({ size = 18, color = '#EF4444' }) => (
 
 export const ProfileScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
-  const { logout } = useAuth(); // Extract global logout function
+  const { user, logout } = useAuth(); // Extract global user state & logout
 
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('USD ($)');
+
+  // Resolve dynamic user details matching database records
+  const name = user?.name || user?.user?.name || user?.fullName || 'Investor';
+  const email = user?.email || user?.user?.email || 'investor@remzik.com';
+  const role = user?.role || user?.user?.role || 'INVESTOR';
+
+  // Compute initials dynamically (e.g., "Muhammad Faisal" -> "MF")
+  const initials = name
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   const handleCurrencyChange = () => {
     Alert.alert('Base Denomination', 'Select your primary protocol currency:', [
@@ -193,7 +207,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
   const handleLogout = () => {
     Alert.alert(
       'Terminate Session',
-      'Are you sure you want to end your secure connection?',
+      'Are you sure you want to end your secure connection? All local session data will be purged.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -201,7 +215,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logout(); // Clears storage and switches root nav tree instantly
+              await logout(); // Wipes all AsyncStorage tokens, user profile cache, and updates navigation state
             } catch (error) {
               console.error('Logout error:', error);
             }
@@ -232,21 +246,21 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Elite Profile Card */}
+        {/* Dynamic Elite Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarInitials}>MF</Text>
+              <Text style={styles.avatarInitials}>{initials}</Text>
             </View>
             <View style={styles.onlineIndicator} />
           </View>
 
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Muhammad Faisal</Text>
-            <Text style={styles.profileEmail}>faisal@remzik.com</Text>
+            <Text style={styles.profileName}>{name}</Text>
+            <Text style={styles.profileEmail}>{email}</Text>
             <View style={styles.kycBadge}>
               <ShieldCheckIcon size={13} color="#34D399" />
-              <Text style={styles.kycText}>KYC Verified • Tier 2</Text>
+              <Text style={styles.kycText}>Verified {role} • Active</Text>
             </View>
           </View>
         </View>
@@ -296,7 +310,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
               </View>
               <View>
                 <Text style={styles.settingText}>Change Master Password</Text>
-                <Text style={styles.settingSubtext}>Updated 90 days ago</Text>
+                <Text style={styles.settingSubtext}>Updated recently</Text>
               </View>
             </View>
             <ChevronRightIcon size={16} color="#6EE7B7" />

@@ -1,6 +1,13 @@
 // src/components/marketplace/MarketplaceWebViewModal.tsx
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
 import WebView from 'react-native-webview';
 
 const PALETTE = {
@@ -27,7 +34,8 @@ export const MarketplaceWebViewModal = ({
   <Modal
     visible={Boolean(webViewUrl)}
     animationType="slide"
-    transparent={false}
+    presentationStyle="pageSheet"
+    onRequestClose={onClose}
   >
     <View
       style={{
@@ -85,14 +93,31 @@ export const MarketplaceWebViewModal = ({
         <View style={{ width: 50 }} />
       </View>
 
-      {webViewUrl && (
-        <WebView
-          source={{ uri: webViewUrl }}
-          onMessage={onMessage}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-        />
-      )}
+      <View
+        style={{ flex: 1, backgroundColor: PALETTE.bg, position: 'relative' }}
+      >
+        {webViewUrl && (
+          <WebView
+            source={{ uri: webViewUrl }}
+            onMessage={onMessage}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            sharedCookiesEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            scrollEnabled={true}
+            bounces={false}
+            setSupportMultipleWindows={false}
+            originWhitelist={[
+              'https://*',
+              'http://*',
+              'http://localhost:*',
+              'http://10.0.2.2:*',
+              'http://192.168.1.239:*',
+            ]}
+            style={{ flex: 1, backgroundColor: PALETTE.bg }}
+          />
+        )}
+      </View>
     </View>
   </Modal>
 );

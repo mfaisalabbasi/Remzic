@@ -18,7 +18,7 @@ export const useHomeData = (user: any) => {
 
   useEffect(() => {
     const resolveUserIdentity = async () => {
-      // 1. Check direct or nested user object properties from context
+      // 1. Check direct user prop from context
       const directName =
         user?.name || user?.user?.name || user?.fullName || user?.username;
 
@@ -27,7 +27,7 @@ export const useHomeData = (user: any) => {
         return;
       }
 
-      // 2. Check AsyncStorage for stored user data or token
+      // 2. Check AsyncStorage for cached 'userData'
       try {
         const storedUser = await AsyncStorage.getItem('userData');
         if (storedUser) {
@@ -47,7 +47,7 @@ export const useHomeData = (user: any) => {
         console.warn('Could not retrieve user profile from storage', e);
       }
 
-      // 3. Fallback: Fetch profile directly from secondaryMarketApi / backend `getMe()`
+      // 3. Fallback: Fetch directly via API getMe()
       try {
         const me = await secondaryMarketApi.getMe();
         const apiName = me?.name || me?.user?.name || me?.email?.split('@')[0];

@@ -2,10 +2,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, StatusBar, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ethers } from 'ethers';
 
 import { CONFIG } from '../../config/constant';
 import { secondaryMarketApi } from '../../services/api/secondaryMarketApi';
+import { useAuth } from '../../navigation/AuthContext';
 
 import { MarketplaceHeader } from '../../components/marketplace/MarketplaceHeader';
 import { MarketplaceSegmentAndFilter } from '../../components/marketplace/MarketplaceSegmentAndFilter';
@@ -19,8 +21,13 @@ const PALETTE = {
 
 const categories = ['All', 'Residential', 'Commercial', 'Land'];
 
+const isValidEvmAddress = (address?: string | null): boolean =>
+  Boolean(address && /^0x[a-fA-F0-9]{40}$/.test(address.trim()));
+
 export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
   const [marketTab, setMarketTab] = useState<'Buy' | 'Sell' | 'Trades'>('Buy');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -143,6 +150,55 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
     );
   };
 
+  /**
+   * Guaranteed Wallet Parameter Resolver
+   * Tries AuthContext -> AsyncStorage -> Backend API fallback
+   */
+  const getWalletParam = async (): Promise<string> => {
+    // 1. Context check
+    let rawWallet = user?.walletAddress || user?.user?.walletAddress || '';
+
+    // 2. AsyncStorage check
+    if (!isValidEvmAddress(rawWallet)) {
+      try {
+        const cached = await AsyncStorage.getItem('cached_walletAddress');
+        if (cached && isValidEvmAddress(cached)) {
+          rawWallet = cached;
+        }
+      } catch (e) {
+        console.warn('[Marketplace] Storage wallet lookup failed:', e);
+      }
+    }
+
+    // 3. Remote Profile API Fallback
+    if (!isValidEvmAddress(rawWallet)) {
+      try {
+        const me = await secondaryMarketApi.getMe();
+        const apiWallet = me?.walletAddress || me?.user?.walletAddress;
+        if (isValidEvmAddress(apiWallet)) {
+          rawWallet = apiWallet;
+          await AsyncStorage.setItem(
+            'cached_walletAddress',
+            rawWallet.trim().toLowerCase(),
+          );
+        }
+      } catch (e) {
+        console.warn('[Marketplace] Remote profile wallet lookup failed:', e);
+      }
+    }
+
+    if (!isValidEvmAddress(rawWallet)) {
+      console.error(
+        '⚠️ [Marketplace] No valid wallet address found for session auto-auth.',
+      );
+      return '';
+    }
+
+    return `&walletAddress=${encodeURIComponent(
+      rawWallet.trim().toLowerCase(),
+    )}`;
+  };
+
   const handleCreateListing = async () => {
     if (!selectedAssetToSell || !unitsToSell || !askPricePerUnit) {
       Alert.alert(
@@ -175,32 +231,66 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
       setActiveListingId(listingId);
 
       const marketplaceAddress = CONFIG.MARKETPLACE_ADDRESS;
+      const assetTokenAddress =
+        selectedAssetToSell.tokenAddress ||
+        selectedAssetToSell.asset?.tokenAddress;
+
+      if (!isValidEvmAddress(assetTokenAddress)) {
+        throw new Error('Invalid asset token contract address.');
+      }
+
+      const unitsToSellBigInt = BigInt(unitsToSell);
+
+      // 1. Build ERC-20 approval payload for the asset token so the marketplace can escrow shares
+      const erc20Interface = new ethers.Interface([
+        'function approve(address spender, uint256 amount) external returns (bool)',
+      ]);
+      const approvalData = erc20Interface.encodeFunctionData('approve', [
+        marketplaceAddress,
+        unitsToSellBigInt,
+      ]);
+
+      // 2. Build marketplace createListing transaction payload
       const marketInterface = new ethers.Interface([
         'function createListing(string calldata listingId, address token, address paymentToken, uint256 amount, uint256 pricePerUnit) external',
       ]);
 
       const txData = marketInterface.encodeFunctionData('createListing', [
         listingId,
-        selectedAssetToSell.tokenAddress ||
-          selectedAssetToSell.asset?.tokenAddress,
+        assetTokenAddress,
         CONFIG.STABLECOIN_ADDRESS,
-        BigInt(unitsToSell),
+        unitsToSellBigInt,
         ethers.parseUnits(askPricePerUnit, 6),
       ]);
 
       const payload = {
+        approvalPayload: {
+          to: assetTokenAddress,
+          data: approvalData,
+        },
         txPayload: {
           to: marketplaceAddress,
           data: txData,
           chainId: Number(CONFIG.TARGET_CHAIN_ID || 31337),
         },
+        expectedStablecoinAddress: assetTokenAddress,
+        expectedStablecoinAmount: unitsToSellBigInt.toString(),
+        expectedVaultAddress: marketplaceAddress,
       };
 
       const encoded = encodeURIComponent(JSON.stringify(payload));
+      const walletParam = await getWalletParam();
+
       const signUrl =
         `${CONFIG.FRONTEND_URL}/investor/sign` +
         `?listingId=${encodeURIComponent(listingId)}` +
-        `&payload=${encoded}`;
+        `&payload=${encoded}` +
+        walletParam +
+        `&autoAuth=true`;
+
+      if (__DEV__) {
+        console.log('🚀 [Marketplace] Launching Sign URL:', signUrl);
+      }
 
       setIsModalVisible(false);
       setWebViewUrl(signUrl);
@@ -260,10 +350,18 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
       };
 
       const encoded = encodeURIComponent(JSON.stringify(payload));
+      const walletParam = await getWalletParam();
+
       const signUrl =
         `${CONFIG.FRONTEND_URL}/investor/sign` +
         `?tradeId=${encodeURIComponent(intentData.tradeId)}` +
-        `&payload=${encoded}`;
+        `&payload=${encoded}` +
+        walletParam +
+        `&autoAuth=true`;
+
+      if (__DEV__) {
+        console.log('🚀 [Marketplace] Launching Trade Sign URL:', signUrl);
+      }
 
       setWebViewUrl(signUrl);
     } catch (err: any) {
@@ -323,11 +421,15 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
             };
 
             const encoded = encodeURIComponent(JSON.stringify(payload));
+            const walletParam = await getWalletParam();
+
             const signUrl =
               `${CONFIG.FRONTEND_URL}/investor/sign` +
               `?listingId=${encodeURIComponent(listingId)}` +
               `&cancel=true` +
-              `&payload=${encoded}`;
+              `&payload=${encoded}` +
+              walletParam +
+              `&autoAuth=true`;
 
             setWebViewUrl(signUrl);
           } catch (err: any) {
