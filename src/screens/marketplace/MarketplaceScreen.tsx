@@ -150,15 +150,9 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
     );
   };
 
-  /**
-   * Guaranteed Wallet Parameter Resolver
-   * Tries AuthContext -> AsyncStorage -> Backend API fallback
-   */
   const getWalletParam = async (): Promise<string> => {
-    // 1. Context check
     let rawWallet = user?.walletAddress || user?.user?.walletAddress || '';
 
-    // 2. AsyncStorage check
     if (!isValidEvmAddress(rawWallet)) {
       try {
         const cached = await AsyncStorage.getItem('cached_walletAddress');
@@ -170,7 +164,6 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
       }
     }
 
-    // 3. Remote Profile API Fallback
     if (!isValidEvmAddress(rawWallet)) {
       try {
         const me = await secondaryMarketApi.getMe();
@@ -241,7 +234,6 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
 
       const unitsToSellBigInt = BigInt(unitsToSell);
 
-      // 1. Build ERC-20 approval payload for the asset token so the marketplace can escrow shares
       const erc20Interface = new ethers.Interface([
         'function approve(address spender, uint256 amount) external returns (bool)',
       ]);
@@ -250,7 +242,6 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
         unitsToSellBigInt,
       ]);
 
-      // 2. Build marketplace createListing transaction payload
       const marketInterface = new ethers.Interface([
         'function createListing(string calldata listingId, address token, address paymentToken, uint256 amount, uint256 pricePerUnit) external',
       ]);
@@ -281,8 +272,9 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
       const encoded = encodeURIComponent(JSON.stringify(payload));
       const walletParam = await getWalletParam();
 
+      // 🚀 FIXED ENCLAVE SIGN ROUTE TO /auth/sign
       const signUrl =
-        `${CONFIG.FRONTEND_URL}/investor/sign` +
+        `${CONFIG.FRONTEND_URL}/auth/sign` +
         `?listingId=${encodeURIComponent(listingId)}` +
         `&payload=${encoded}` +
         walletParam +
@@ -352,8 +344,9 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
       const encoded = encodeURIComponent(JSON.stringify(payload));
       const walletParam = await getWalletParam();
 
+      // 🚀 FIXED ENCLAVE SIGN ROUTE TO /auth/sign
       const signUrl =
-        `${CONFIG.FRONTEND_URL}/investor/sign` +
+        `${CONFIG.FRONTEND_URL}/auth/sign` +
         `?tradeId=${encodeURIComponent(intentData.tradeId)}` +
         `&payload=${encoded}` +
         walletParam +
@@ -423,8 +416,9 @@ export const MarketplaceScreen = ({ navigation }: { navigation: any }) => {
             const encoded = encodeURIComponent(JSON.stringify(payload));
             const walletParam = await getWalletParam();
 
+            // 🚀 FIXED ENCLAVE SIGN ROUTE TO /auth/sign
             const signUrl =
-              `${CONFIG.FRONTEND_URL}/investor/sign` +
+              `${CONFIG.FRONTEND_URL}/auth/sign` +
               `?listingId=${encodeURIComponent(listingId)}` +
               `&cancel=true` +
               `&payload=${encoded}` +

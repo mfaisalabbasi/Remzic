@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ethers } from 'ethers';
 
 import { DistributionsHeader } from '../../components/distributions/DistributionsHeader';
@@ -19,6 +20,7 @@ import { DistributionsPreferenceCard } from '../../components/distributions/Dist
 import { DistributionsList } from '../../components/distributions/DistributionsList';
 import { DistributionReceiptModal } from '../../components/distributions/DistributionReceiptModal';
 import { DistributionClaimWebViewModal } from '../../components/distributions/DistributionClaimWebViewModal';
+import { useAuth } from '../../navigation/AuthContext';
 
 type DistributionStatus = 'Upcoming' | 'Processing' | 'Paid' | 'Ready';
 
@@ -40,8 +42,13 @@ interface DistributionItem {
   contractAddress?: string;
 }
 
+const isValidEvmAddress = (address?: string | null): boolean =>
+  Boolean(address && /^0x[a-fA-F0-9]{40}$/.test(address.trim()));
+
 export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
   const [distributions, setDistributions] = useState<DistributionItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedTab, setSelectedTab] =
@@ -181,6 +188,29 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
     setTimeout(() => setCopied(false), 2400);
   };
 
+  const getWalletParam = async (): Promise<string> => {
+    let rawWallet = user?.walletAddress || user?.user?.walletAddress || '';
+
+    if (!isValidEvmAddress(rawWallet)) {
+      try {
+        const cached = await AsyncStorage.getItem('cached_walletAddress');
+        if (cached && isValidEvmAddress(cached)) {
+          rawWallet = cached;
+        }
+      } catch (e) {
+        console.warn('[Distributions] Storage wallet lookup failed:', e);
+      }
+    }
+
+    if (!isValidEvmAddress(rawWallet)) {
+      return '';
+    }
+
+    return `&walletAddress=${encodeURIComponent(
+      rawWallet.trim().toLowerCase(),
+    )}`;
+  };
+
   const handleDistributionModeChange = async (
     newMode: 'OFF_CHAIN' | 'ON_CHAIN',
   ) => {
@@ -307,12 +337,16 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
       };
 
       const encodedPayload = encodeURIComponent(JSON.stringify({ txPayload }));
+      const walletParam = await getWalletParam();
 
-      const targetClaimUrl = `${WEB_APP_BASE_URL}/investor/sign?claimId=${encodeURIComponent(
-        item.batchId,
-      )}&payload=${encodedPayload}&contractAddress=${encodeURIComponent(
-        targetContractAddress,
-      )}`;
+      // 🚀 ALIGNED WITH /auth/sign ENCLAVE ROUTE & AUTO-AUTH
+      const targetClaimUrl =
+        `${WEB_APP_BASE_URL}/auth/sign` +
+        `?claimId=${encodeURIComponent(item.batchId)}` +
+        `&payload=${encodedPayload}` +
+        `&contractAddress=${encodeURIComponent(targetContractAddress)}` +
+        walletParam +
+        `&autoAuth=true`;
 
       setClaimUrl(targetClaimUrl);
       setModalVisible(false);
@@ -330,11 +364,7 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      if (
-        data.type === 'CLAIM_SUCCESS' ||
-        data.type === 'TRANSACTION_COMPLETE' ||
-        data.type === 'SIGN_SUCCESS'
-      ) {
+      if (data.type === 'CLAIM_SUCCESS') {
         setWebViewModalVisible(false);
 
         if (selectedItem) {
@@ -350,6 +380,12 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
           'On-chain yield claim & signature verified successfully!',
         );
         fetchDistributionsData();
+      } else if (data.type === 'CLAIM_FAILED') {
+        setWebViewModalVisible(false);
+        Alert.alert(
+          'Transaction Failed',
+          data.error || 'User cancelled or transaction reverted.',
+        );
       } else if (data.type === 'CLOSE_MODAL') {
         setWebViewModalVisible(false);
         fetchDistributionsData();

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '../../theme/colors';
 import { investmentApi } from '../../services/api/investmentApi';
+import { walletApi } from '../../services/api/walletApi';
 
 import { InvestmentStatusView } from '../../components/investment/InvestmentStatusView';
 import { InvestmentHeader } from '../../components/investment/InvestmentHeader';
@@ -30,6 +31,7 @@ interface InvestmentProperty {
   assetId?: string;
   title?: string;
   unitPrice?: number | string;
+  tokenPrice?: number | string;
   expectedYield?: number | string;
   yield?: number | string;
   yieldRate?: number | string;
@@ -137,7 +139,9 @@ const isAllowedWebViewUrl = (url: string, configuredHost: string): boolean => {
         typeof __DEV__ !== 'undefined' &&
         __DEV__ &&
         target.protocol === 'http:' &&
-        ['localhost', '10.0.2.2', '192.168.1.239'].includes(target.hostname)
+        ['localhost', '10.0.2.2', '192.168.1.239', '127.0.0.1'].includes(
+          target.hostname,
+        )
       ) {
         return true;
       }
@@ -173,6 +177,7 @@ export const InvestmentFlowScreen = ({
   const [isWebViewVisible, setIsWebViewVisible] = useState(false);
   const [webViewUrl, setWebViewUrl] = useState('');
   const [webViewLoading, setWebViewLoading] = useState(false);
+  const [privyAccessToken, setPrivyAccessToken] = useState<string | null>(null);
 
   const [settlementMode, setSettlementMode] =
     useState<SettlementMode>('OFF_CHAIN');
@@ -445,6 +450,19 @@ export const InvestmentFlowScreen = ({
 
     investmentIdRef.current = intent.investmentId;
 
+    // 🚀 Fetch FRESH RS256 Privy Custom Token and synced fallback wallet on EVERY invocation
+    setSafeStatus('Authenticating secure enclave session...');
+    let customToken: string | null = null;
+    let fallbackWallet: string | null = null;
+    try {
+      const tokenRes = await walletApi.getPrivyToken();
+      customToken = tokenRes?.privyCustomToken || null;
+      fallbackWallet = tokenRes?.walletAddress || null;
+      setPrivyAccessToken(customToken);
+    } catch (err) {
+      console.warn('⚠️ Failed to fetch fresh Privy custom token:', err);
+    }
+
     const payloadData = {
       approvalPayload: intent.approvalPayload || null,
       txPayload: intent.txPayload,
@@ -454,17 +472,26 @@ export const InvestmentFlowScreen = ({
     };
 
     const payload = encodeURIComponent(JSON.stringify(payloadData));
-    const expectedWallet = normalizeWalletAddress(intent.expectedWalletAddress);
-    const walletParam = expectedWallet
-      ? `&walletAddress=${encodeURIComponent(expectedWallet)}`
-      : '';
+    const expectedWallet = normalizeWalletAddress(
+      intent.expectedWalletAddress || fallbackWallet,
+    );
 
-    const targetUrl =
-      `${getNextJsHost()}/investor/sign` +
-      `?payload=${payload}` +
-      `&investmentId=${encodeURIComponent(intent.investmentId)}` +
-      walletParam +
-      `&autoAuth=true`;
+    let targetUrl = `${getNextJsHost()}/auth/sign?payload=${payload}&investmentId=${encodeURIComponent(
+      intent.investmentId,
+    )}&autoAuth=true`;
+
+    if (expectedWallet) {
+      targetUrl += `&walletAddress=${encodeURIComponent(expectedWallet)}`;
+    }
+
+    if (customToken) {
+      targetUrl += `&token=${encodeURIComponent(customToken)}`;
+    }
+
+    console.log(
+      '🌐 Fully Assembled Secure WebView URL length:',
+      targetUrl.length,
+    );
 
     if (!mountedRef.current) return;
 
@@ -583,11 +610,13 @@ export const InvestmentFlowScreen = ({
           return;
         }
 
+        console.log('📱 WebView Bridge Message Received:', data);
+
         const investmentId = investmentIdRef.current;
         if (!isValidInvestmentId(investmentId)) return;
 
         if (data.type === 'TX_SUCCESS' || data.type === 'TX_FAILED') {
-          if (data.investmentId !== investmentId) {
+          if (data.investmentId && data.investmentId !== investmentId) {
             failWebView(
               'The signing session returned an invalid investment identifier.',
             );
@@ -672,6 +701,7 @@ export const InvestmentFlowScreen = ({
     setWebViewLoading(false);
     setIsWebViewVisible(false);
     setWebViewUrl('');
+    setPrivyAccessToken(null);
     setStatusMessage('');
     setSafeFlowState('IDLE');
   }, [cancelPolling, clearWebViewTimeout, setSafeFlowState]);
@@ -758,6 +788,7 @@ export const InvestmentFlowScreen = ({
         webViewUrl={webViewUrl}
         webViewLoading={webViewLoading}
         configuredWebHost={configuredWebHost}
+        privyAccessToken={privyAccessToken}
         onDismiss={handleDismissWebView}
         onMessage={handleWebViewMessage}
         onLoadStart={() => {

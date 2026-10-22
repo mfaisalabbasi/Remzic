@@ -1,9 +1,9 @@
+// src/components/asset/InvestorGovernanceView.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -12,8 +12,11 @@ import {
   Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ethers } from 'ethers';
 import { WebView } from 'react-native-webview';
+import { CONFIG } from '../../config/constant';
+import { useAuth } from '../../navigation/AuthContext';
 
 interface Proposal {
   id: string;
@@ -28,8 +31,13 @@ interface InvestorGovernanceProps {
   walletProvider?: any;
 }
 
+const isValidEvmAddress = (address?: string | null): boolean =>
+  Boolean(address && /^0x[a-fA-F0-9]{40}$/.test(address.trim()));
+
 export const InvestorGovernanceView = ({ asset }: InvestorGovernanceProps) => {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -52,9 +60,10 @@ export const InvestorGovernanceView = ({ asset }: InvestorGovernanceProps) => {
       : 'http://localhost:4000/api';
 
   const WEB_APP_BASE_URL =
-    Platform.OS === 'android'
+    CONFIG?.FRONTEND_URL ||
+    (Platform.OS === 'android'
       ? 'http://10.0.2.2:3000'
-      : 'http://localhost:3000';
+      : 'http://localhost:3000');
 
   const fetchProposals = useCallback(async () => {
     if (!assetId) {
@@ -87,6 +96,29 @@ export const InvestorGovernanceView = ({ asset }: InvestorGovernanceProps) => {
     fetchProposals();
   }, [fetchProposals]);
 
+  const getWalletParam = async (): Promise<string> => {
+    let rawWallet = user?.walletAddress || user?.user?.walletAddress || '';
+
+    if (!isValidEvmAddress(rawWallet)) {
+      try {
+        const cached = await AsyncStorage.getItem('cached_walletAddress');
+        if (cached && isValidEvmAddress(cached)) {
+          rawWallet = cached;
+        }
+      } catch (e) {
+        console.warn('[Governance] Storage wallet lookup failed:', e);
+      }
+    }
+
+    if (!isValidEvmAddress(rawWallet)) {
+      return '';
+    }
+
+    return `&walletAddress=${encodeURIComponent(
+      rawWallet.trim().toLowerCase(),
+    )}`;
+  };
+
   const handleOpenWebViewVote = async (
     proposalId: number,
     support: boolean,
@@ -111,13 +143,20 @@ export const InvestorGovernanceView = ({ asset }: InvestorGovernanceProps) => {
         to: govAddress,
         data: callData,
         value: '0x0',
-        chainId: 31337,
+        chainId: Number(CONFIG?.TARGET_CHAIN_ID || 31337),
       };
 
       const encodedPayload = encodeURIComponent(JSON.stringify({ txPayload }));
-      const targetSignUrl = `${WEB_APP_BASE_URL}/investor/sign?proposalId=${proposalId}&payload=${encodedPayload}&contractAddress=${encodeURIComponent(
-        govAddress,
-      )}`;
+      const walletParam = await getWalletParam();
+
+      // 🚀 FULLY ALIGNED WITH /auth/sign ENCLAVE ROUTE & AUTO-AUTH
+      const targetSignUrl =
+        `${WEB_APP_BASE_URL}/auth/sign` +
+        `?proposalId=${proposalId}` +
+        `&payload=${encodedPayload}` +
+        `&contractAddress=${encodeURIComponent(govAddress)}` +
+        walletParam +
+        `&autoAuth=true`;
 
       setSignUrl(targetSignUrl);
       setWebViewModalVisible(true);
@@ -135,6 +174,7 @@ export const InvestorGovernanceView = ({ asset }: InvestorGovernanceProps) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (
+        data.type === 'VOTE_SUCCESS' ||
         data.type === 'CLAIM_SUCCESS' ||
         data.type === 'TRANSACTION_COMPLETE' ||
         data.type === 'SIGN_SUCCESS'
@@ -142,6 +182,12 @@ export const InvestorGovernanceView = ({ asset }: InvestorGovernanceProps) => {
         setWebViewModalVisible(false);
         Alert.alert('Success', 'DAO vote recorded successfully on-chain!');
         fetchProposals();
+      } else if (data.type === 'VOTE_FAILED') {
+        setWebViewModalVisible(false);
+        Alert.alert(
+          'Transaction Failed',
+          data.error || 'User cancelled or transaction reverted.',
+        );
       } else if (data.type === 'CLOSE_MODAL') {
         setWebViewModalVisible(false);
         fetchProposals();

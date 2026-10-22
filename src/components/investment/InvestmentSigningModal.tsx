@@ -15,6 +15,7 @@ interface InvestmentSigningModalProps {
   webViewUrl: string;
   webViewLoading: boolean;
   configuredWebHost: string;
+  privyAccessToken?: string | null;
   onDismiss: () => void;
   onMessage: (event: any) => void;
   onLoadStart: () => void;
@@ -34,92 +35,100 @@ export const InvestmentSigningModal = ({
   onLoadEnd,
   onFail,
   isAllowedWebViewUrl,
-}: InvestmentSigningModalProps) => (
-  <Modal
-    visible={isVisible}
-    animationType="slide"
-    presentationStyle="pageSheet"
-    onRequestClose={onDismiss}
-  >
-    <View style={styles.webViewModalContainer}>
-      <View style={styles.modalGrabberContainer}>
-        <View style={styles.modalGrabberHandle} />
-      </View>
+}: InvestmentSigningModalProps) => {
+  const targetUrl = webViewUrl || '';
 
-      <View style={styles.webViewHeader}>
-        <View style={styles.web3BadgeWrapper}>
-          <View style={styles.liveIndicatorDot} />
-          <Text style={styles.web3BadgeText}>SECURE ENCLAVE</Text>
+  return (
+    <Modal
+      visible={isVisible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onDismiss}
+    >
+      <View style={styles.webViewModalContainer}>
+        <View style={styles.modalGrabberContainer}>
+          <View style={styles.modalGrabberHandle} />
         </View>
 
-        <Text style={styles.webViewHeaderTitle}>Web3 Transaction Signer</Text>
-
-        <TouchableOpacity
-          onPress={onDismiss}
-          style={styles.webViewCloseButton}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.webViewCloseText}>Dismiss</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.webViewWrapper}>
-        {webViewUrl && (
-          <WebView
-            source={{ uri: webViewUrl }}
-            onMessage={onMessage}
-            javaScriptEnabled
-            domStorageEnabled
-            sharedCookiesEnabled
-            thirdPartyCookiesEnabled
-            scrollEnabled
-            bounces={false}
-            setSupportMultipleWindows={false}
-            originWhitelist={[
-              'https://*',
-              'http://*',
-              'http://localhost:*',
-              'http://10.0.2.2:*',
-              'http://192.168.1.239:*',
-            ]}
-            style={styles.webView}
-            containerStyle={styles.webView}
-            onLoadStart={onLoadStart}
-            onLoad={onLoadEnd}
-            onLoadEnd={onLoadEnd}
-            onError={event =>
-              onFail(
-                `Unable to load signing service: ${
-                  event.nativeEvent.description || 'Connection refused'
-                }`,
-              )
-            }
-            onHttpError={event =>
-              onFail(
-                `Secure signing service returned HTTP ${event.nativeEvent.statusCode}.`,
-              )
-            }
-            onShouldStartLoadWithRequest={request => {
-              if (typeof __DEV__ !== 'undefined' && __DEV__) {
-                return true;
-              }
-              return isAllowedWebViewUrl(request?.url || '', configuredWebHost);
-            }}
-          />
-        )}
-
-        {webViewLoading && (
-          <View pointerEvents="none" style={styles.webViewLoadingOverlay}>
-            <ActivityIndicator size="large" color="#34D399" />
-            <Text style={styles.webViewLoadingText}>
-              Establishing secure signing session...
-            </Text>
+        <View style={styles.webViewHeader}>
+          <View style={styles.web3BadgeWrapper}>
+            <View style={styles.liveIndicatorDot} />
+            <Text style={styles.web3BadgeText}>SECURE ENCLAVE</Text>
           </View>
-        )}
+
+          <Text style={styles.webViewHeaderTitle}>Web3 Transaction Signer</Text>
+
+          <TouchableOpacity
+            onPress={onDismiss}
+            style={styles.webViewCloseButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.webViewCloseText}>Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.webViewWrapper}>
+          {targetUrl ? (
+            <WebView
+              source={{ uri: targetUrl }}
+              onMessage={onMessage}
+              javaScriptEnabled={true}
+              domStorageEnabled={false}
+              sharedCookiesEnabled={false}
+              thirdPartyCookiesEnabled={false}
+              cacheEnabled={false}
+              incognito={true}
+              scrollEnabled={true}
+              bounces={false}
+              setSupportMultipleWindows={false}
+              originWhitelist={[
+                'https://*',
+                'http://*',
+                'http://localhost:*',
+                'http://10.0.2.2:*',
+                'http://192.168.1.239:*',
+                'http://127.0.0.1:*',
+              ]}
+              style={styles.webView}
+              containerStyle={styles.webView}
+              onLoadStart={onLoadStart}
+              onLoad={onLoadEnd}
+              onLoadEnd={onLoadEnd}
+              onError={event =>
+                onFail(
+                  `Unable to load signing service: ${
+                    event.nativeEvent.description || 'Connection refused'
+                  }`,
+                )
+              }
+              onHttpError={event =>
+                onFail(
+                  `Secure signing service returned HTTP ${event.nativeEvent.statusCode}.`,
+                )
+              }
+              onShouldStartLoadWithRequest={request => {
+                const url = request?.url || '';
+                if (url.startsWith('about:blank') || url.startsWith('data:')) {
+                  return true;
+                }
+                return isAllowedWebViewUrl(url, configuredWebHost);
+              }}
+            />
+          ) : null}
+
+          {webViewLoading && (
+            <View pointerEvents="none" style={styles.webViewLoadingOverlay}>
+              <ActivityIndicator size="large" color="#34D399" />
+              <Text style={styles.webViewLoadingText}>
+                Establishing secure signing session...
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 const styles = StyleSheet.create({
   webViewModalContainer: { flex: 1, backgroundColor: '#080C0A' },

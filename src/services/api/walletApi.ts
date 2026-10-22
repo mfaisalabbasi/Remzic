@@ -64,4 +64,10 @@ export const walletApi = {
     const response = await apiClient.post('/auth/provision-wallet', {});
     return response.data;
   },
+  getPrivyToken: async (): Promise<{ privyCustomToken: string }> => {
+    const response = await apiClient.get<{ privyCustomToken: string }>(
+      '/auth/privy-token',
+    );
+    return response.data;
+  },
 };
