@@ -245,25 +245,35 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
     try {
       setIsCheckingClaim(true);
 
-      const backendUrl =
-        Platform.OS === 'android'
-          ? 'http://10.0.2.2:4000/api'
-          : 'http://localhost:4000/api';
-
-      const proofUrl = `${backendUrl}/distributions/proof/${encodeURIComponent(
+      const proofUrl = `${API_BASE_URL}/distributions/proof/${encodeURIComponent(
         item.batchId,
       )}`;
-      const res = await fetch(proofUrl);
+      const res = await fetch(proofUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
 
       if (!res.ok) {
-        throw new Error(`Failed to fetch distribution proof from server.`);
+        const errorText = await res.text().catch(() => '');
+        console.error(
+          `[Proof Fetch Failed] Status: ${res.status}, Body:`,
+          errorText,
+        );
+        throw new Error(
+          `Server returned status ${res.status}: ${
+            errorText || 'Proof not found'
+          }`,
+        );
       }
 
       const proofPayload = await res.json();
 
       const targetContractAddress =
         process.env.EXPO_PUBLIC_YIELD_NOTARY_ADDRESS ||
-        '0x9A676e781A523b5d0C0e43731313A708CB607508';
+        '0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1';
 
       const providerUrl =
         Platform.OS === 'android'
@@ -339,10 +349,9 @@ export const DistributionsScreen = ({ navigation }: { navigation: any }) => {
       const encodedPayload = encodeURIComponent(JSON.stringify({ txPayload }));
       const walletParam = await getWalletParam();
 
-      // 🚀 ALIGNED WITH /auth/sign ENCLAVE ROUTE & AUTO-AUTH
       const targetClaimUrl =
         `${WEB_APP_BASE_URL}/auth/sign` +
-        `?claimId=${encodeURIComponent(item.batchId)}` +
+        `?batchId=${encodeURIComponent(item.batchId)}` +
         `&payload=${encodedPayload}` +
         `&contractAddress=${encodeURIComponent(targetContractAddress)}` +
         walletParam +
