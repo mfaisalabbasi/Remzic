@@ -25,6 +25,28 @@ export interface SyncWalletResponse {
   message?: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+  [key: string]: any;
+}
+
+// ⚡ Standalone exported function for direct named imports
+export const getCurrentUser = async (): Promise<UserProfile | null> => {
+  try {
+    console.log('📡 [API] Fetching current user profile (/auth/me)...');
+    const response = await apiClient.get('/auth/me');
+    console.log('✅ [API] Current user fetched:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ [API] Failed to fetch current user:', error?.message);
+    return null;
+  }
+};
+
 export const walletApi = {
   getWalletData: async (): Promise<WalletData> => {
     try {
@@ -60,14 +82,16 @@ export const walletApi = {
   },
 
   syncWallet: async (): Promise<SyncWalletResponse> => {
-    // ⚡ Updated to call the server-side provisioning endpoint
     const response = await apiClient.post('/auth/provision-wallet', {});
     return response.data;
   },
+
   getPrivyToken: async (): Promise<{ privyCustomToken: string }> => {
     const response = await apiClient.get<{ privyCustomToken: string }>(
       '/auth/privy-token',
     );
     return response.data;
   },
+
+  getCurrentUser,
 };

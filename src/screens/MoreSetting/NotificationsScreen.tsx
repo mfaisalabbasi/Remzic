@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,17 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
+import { useNotificationsMobile } from '../../services/hooks/useNotificationsMobile'; // 👈 Import your new hook
+import { getCurrentUser } from '../../services/api/walletApi';
 
 const { width } = Dimensions.get('window');
 
-// --- Dedicated Inline SVG Vector Icons ---
+// --- Icons (Kept intact from your code) ---
 const ArrowLeftIcon = ({ size = 18, color = Colors.white }) => (
   <Svg
     width={size}
@@ -29,7 +32,6 @@ const ArrowLeftIcon = ({ size = 18, color = Colors.white }) => (
     <Path d="M19 12H5M12 19l-7-7 7-7" />
   </Svg>
 );
-
 const DollarSignIcon = ({ size = 18, color = Colors.accent }) => (
   <Svg
     width={size}
@@ -44,7 +46,6 @@ const DollarSignIcon = ({ size = 18, color = Colors.accent }) => (
     <Path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
   </Svg>
 );
-
 const BuildingIcon = ({ size = 18, color = Colors.accent }) => (
   <Svg
     width={size}
@@ -59,7 +60,6 @@ const BuildingIcon = ({ size = 18, color = Colors.accent }) => (
     <Path d="M6 22V2a2 2 0 012-2h8a2 2 0 012 2v20zM6 6h12M6 10h12M6 14h12M6 18h12" />
   </Svg>
 );
-
 const ShieldCheckIcon = ({ size = 18, color = Colors.accent }) => (
   <Svg
     width={size}
@@ -75,7 +75,6 @@ const ShieldCheckIcon = ({ size = 18, color = Colors.accent }) => (
     <Path d="M9 12l2 2 4-4" />
   </Svg>
 );
-
 const TrendingUpIcon = ({ size = 18, color = Colors.accent }) => (
   <Svg
     width={size}
@@ -91,7 +90,6 @@ const TrendingUpIcon = ({ size = 18, color = Colors.accent }) => (
     <Path d="M17 6h6v6" />
   </Svg>
 );
-
 const BellOffIcon = ({ size = 36, color = '#6EE7B7' }) => (
   <Svg
     width={size}
@@ -107,58 +105,50 @@ const BellOffIcon = ({ size = 36, color = '#6EE7B7' }) => (
   </Svg>
 );
 
-const initialNotifications = [
-  {
-    id: '1',
-    title: 'Dividend Payout Received',
-    description:
-      'Your Q1 dividend of $120.00 from Riyadh Business Tower has been credited to your wallet.',
-    time: '2 hours ago',
-    unread: true,
-    type: 'dividend',
-  },
-  {
-    id: '2',
-    title: 'New Property Dropped',
-    description:
-      'Dubai Marina Luxury Apartments is now open for fractional investment. Tap to view asset.',
-    time: 'Yesterday',
-    unread: true,
-    type: 'property',
-  },
-  {
-    id: '3',
-    title: 'KYC Verified Successfully',
-    description:
-      'Your identity verification has been approved. You now have full access to trading.',
-    time: '3 days ago',
-    unread: false,
-    type: 'kyc',
-  },
-  {
-    id: '4',
-    title: 'Secondary Market Trade Executed',
-    description:
-      'Your sell order for 2 shares of London Office Building was successfully filled.',
-    time: '5 days ago',
-    unread: false,
-    type: 'trade',
-  },
-];
+const API_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:4000/api'
+    : 'http://localhost:4000/api';
 
 export const NotificationsScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [userId, setUserId] = useState<string>();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
+  useEffect(() => {
+    getCurrentUser().then(user => {
+      if (user?.id) setUserId(user.id);
+    });
+  }, []);
+
+  const { notifications, markAsReadLocal, markAllAsReadLocal, loading } =
+    useNotificationsMobile(userId, 'INVESTORS');
+
   const markAllAsRead = () => {
-    setNotifications(prev => prev.map(item => ({ ...item, unread: false })));
+    markAllAsReadLocal();
   };
 
-  const toggleReadStatus = (id: string) => {
-    setNotifications(prev =>
-      prev.map(item => (item.id === id ? { ...item, unread: false } : item)),
-    );
+  const handleToggleRead = async (item: any) => {
+    const isBroadcast =
+      item.isBroadcast || item.id.toString().startsWith('bcast-');
+
+    if (item.unread) {
+      if (!isBroadcast) {
+        try {
+          await fetch(`${API_URL}/notifications/${item.id}/read`, {
+            method: 'PATCH',
+            credentials: 'include',
+          });
+        } catch (e) {
+          console.error('Failed to sync read status:', e);
+        }
+      }
+      markAsReadLocal(item.id);
+    }
+
+    if (item.actionUrl) {
+      // navigation.navigate(item.actionUrl);
+    }
   };
 
   const filteredNotifications = notifications.filter(item =>
@@ -244,7 +234,7 @@ export const NotificationsScreen = ({ navigation }: { navigation: any }) => {
         {filteredNotifications.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconBox}>
-              <BellOffIcon size={32} color="#6EE7B7" />
+              <BellOffIcon size={36} color="#6EE7B7" />
             </View>
             <Text style={styles.emptyTitle}>All Caught Up</Text>
             <Text style={styles.emptySubtitle}>
@@ -261,7 +251,7 @@ export const NotificationsScreen = ({ navigation }: { navigation: any }) => {
                 item.unread && styles.notificationCardUnread,
               ]}
               activeOpacity={0.85}
-              onPress={() => toggleReadStatus(item.id)}
+              onPress={() => handleToggleRead(item)}
             >
               <View style={styles.notificationThumbPlaceholder}>
                 {renderIcon(item.type)}
@@ -271,8 +261,14 @@ export const NotificationsScreen = ({ navigation }: { navigation: any }) => {
                   <Text style={styles.notificationTitle}>{item.title}</Text>
                   {item.unread && <View style={styles.unreadDot} />}
                 </View>
-                <Text style={styles.notificationDesc}>{item.description}</Text>
-                <Text style={styles.notificationTime}>{item.time}</Text>
+                <Text style={styles.notificationDesc}>
+                  {item.message || item.description}
+                </Text>
+                <Text style={styles.notificationTime}>
+                  {item.createdAt
+                    ? new Date(item.createdAt).toLocaleDateString()
+                    : 'Just now'}
+                </Text>
               </View>
             </TouchableOpacity>
           ))
@@ -283,10 +279,7 @@ export const NotificationsScreen = ({ navigation }: { navigation: any }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#03100B', // Deep emerald obsidian background tone
-  },
+  container: { flex: 1, backgroundColor: '#03100B' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,11 +305,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
   },
-  markReadText: {
-    color: Colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  markReadText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
   filterRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -341,16 +330,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  filterTextActive: {
-    color: '#34D399',
-    opacity: 1,
-    fontWeight: '700',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    paddingTop: 4,
-  },
+  filterTextActive: { color: '#34D399', opacity: 1, fontWeight: '700' },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 4 },
   notificationCard: {
     flexDirection: 'row',
     backgroundColor: '#061A12',
@@ -367,7 +348,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   notificationCardUnread: {
-    borderColor: 'rgba(212, 175, 55, 0.35)', // Luxury gold accent ring for unread items
+    borderColor: 'rgba(212, 175, 55, 0.35)',
     backgroundColor: '#082017',
   },
   notificationThumbPlaceholder: {
@@ -380,9 +361,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.2)',
   },
-  notificationInfo: {
-    flex: 1,
-  },
+  notificationInfo: { flex: 1 },
   notificationHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
