@@ -1,4 +1,3 @@
-// src/screens/MoreSetting/ProfileScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -6,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   StatusBar,
   Alert,
 } from 'react-native';
@@ -14,6 +12,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../navigation/AuthContext';
+import { BiometricSettingsRow } from '../../components/profile/BiometricSettingsRow';
+import { PushNotificationSettingsRow } from '../../components/profile/PushNotificationSettingsRow';
+import { ChangePasswordModal } from '../../components/profile/ChangePasswordModal';
+import { SupportChatModal } from '../../components/profile/SupportChatModal';
+import { TermsOfServiceModal } from '../../components/profile/TermsOfServiceModal';
 
 // --- Dedicated Inline SVG Vector Icons ---
 const ArrowLeftIcon = ({ size = 18, color = Colors.white }) => (
@@ -62,25 +65,6 @@ const ShieldCheckIcon = ({ size = 14, color = '#34D399' }) => (
   </Svg>
 );
 
-const FingerprintIcon = ({ size = 18, color = Colors.accent }) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <Path d="M12 10a2 2 0 00-2 2c0 1.02-.1 2.51-.26 4" />
-    <Path d="M14.53 15.5c-.36-1.51-.53-3.21-.53-4.5a3 3 0 00-6 0c0 1.15.11 2.3.32 3.4" />
-    <Path d="M17 12a5 5 0 00-10 0c0 1.5.3 3 1 4.5" />
-    <Path d="M19.5 10.5C20 12 20 13.5 20 15" />
-    <Path d="M4.5 14.5C4 13 4 11.5 4 10a8 8 0 0115.5-2.5" />
-  </Svg>
-);
-
 const KeyIcon = ({ size = 18, color = Colors.accent }) => (
   <Svg
     width={size}
@@ -93,22 +77,6 @@ const KeyIcon = ({ size = 18, color = Colors.accent }) => (
     strokeLinejoin="round"
   >
     <Path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.778-7.778zm0 0L15.5 7.5m0 3l3 3L22 7l-3-3" />
-  </Svg>
-);
-
-const BellIcon = ({ size = 18, color = Colors.accent }) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <Path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    <Path d="M13.73 21a2 2 0 01-3.46 0" />
   </Svg>
 );
 
@@ -176,18 +144,17 @@ const LogOutIcon = ({ size = 18, color = '#EF4444' }) => (
 
 export const ProfileScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth(); // Extract global user state & logout
+  const { user, logout } = useAuth();
 
-  const [biometricsEnabled, setBiometricsEnabled] = useState(true);
-  const [pushNotifications, setPushNotifications] = useState(true);
   const [selectedCurrency, setSelectedCurrency] = useState('USD ($)');
+  const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+  const [isSupportModalVisible, setIsSupportModalVisible] = useState(false);
+  const [isTermsModalVisible, setIsTermsModalVisible] = useState(false);
 
-  // Resolve dynamic user details matching database records
   const name = user?.name || user?.user?.name || user?.fullName || 'Investor';
   const email = user?.email || user?.user?.email || 'investor@remzik.com';
   const role = user?.role || user?.user?.role || 'INVESTOR';
 
-  // Compute initials dynamically (e.g., "Muhammad Faisal" -> "MF")
   const initials = name
     .split(' ')
     .map((n: string) => n[0])
@@ -215,7 +182,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logout(); // Wipes all AsyncStorage tokens, user profile cache, and updates navigation state
+              await logout();
             } catch (error) {
               console.error('Logout error:', error);
             }
@@ -260,7 +227,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.profileEmail}>{email}</Text>
             <View style={styles.kycBadge}>
               <ShieldCheckIcon size={13} color="#34D399" />
-              <Text style={styles.kycText}>Verified {role} • Active</Text>
+              <Text style={styles.kycText}>Verified {role} Active</Text>
             </View>
           </View>
         </View>
@@ -271,38 +238,14 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
         </View>
 
         <View style={styles.settingsGroup}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelGroup}>
-              <View style={styles.iconBox}>
-                <FingerprintIcon size={18} color={Colors.accent} />
-              </View>
-              <View>
-                <Text style={styles.settingText}>Biometric Login</Text>
-                <Text style={styles.settingSubtext}>
-                  Require FaceID / TouchID on launch
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={biometricsEnabled}
-              onValueChange={setBiometricsEnabled}
-              trackColor={{ false: '#081D14', true: Colors.accent }}
-              thumbColor={Colors.white}
-              ios_backgroundColor="#081D14"
-            />
-          </View>
+          <BiometricSettingsRow />
 
           <View style={styles.divider} />
 
           <TouchableOpacity
             style={styles.settingRowTouchable}
             activeOpacity={0.7}
-            onPress={() =>
-              Alert.alert(
-                'Master Password',
-                'Password update prompt triggered.',
-              )
-            }
+            onPress={() => setIsPasswordModalVisible(true)}
           >
             <View style={styles.settingLabelGroup}>
               <View style={styles.iconBox}>
@@ -323,26 +266,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
         </View>
 
         <View style={styles.settingsGroup}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabelGroup}>
-              <View style={styles.iconBox}>
-                <BellIcon size={16} color={Colors.accent} />
-              </View>
-              <View>
-                <Text style={styles.settingText}>Push Notifications</Text>
-                <Text style={styles.settingSubtext}>
-                  Real-time transaction alerts
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={pushNotifications}
-              onValueChange={setPushNotifications}
-              trackColor={{ false: '#081D14', true: Colors.accent }}
-              thumbColor={Colors.white}
-              ios_backgroundColor="#081D14"
-            />
-          </View>
+          <PushNotificationSettingsRow />
 
           <View style={styles.divider} />
 
@@ -378,9 +302,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
           <TouchableOpacity
             style={styles.settingRowTouchable}
             activeOpacity={0.7}
-            onPress={() =>
-              Alert.alert('Support', 'Opening direct VIP concierge channel...')
-            }
+            onPress={() => setIsSupportModalVisible(true)}
           >
             <View style={styles.settingLabelGroup}>
               <View style={styles.iconBox}>
@@ -396,9 +318,7 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
           <TouchableOpacity
             style={styles.settingRowTouchable}
             activeOpacity={0.7}
-            onPress={() =>
-              Alert.alert('Legal', 'Viewing terms of service framework.')
-            }
+            onPress={() => setIsTermsModalVisible(true)}
           >
             <View style={styles.settingLabelGroup}>
               <View style={styles.iconBox}>
@@ -430,6 +350,22 @@ export const ProfileScreen = ({ navigation }: { navigation: any }) => {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Modals */}
+      <ChangePasswordModal
+        visible={isPasswordModalVisible}
+        onClose={() => setIsPasswordModalVisible(false)}
+      />
+
+      <SupportChatModal
+        visible={isSupportModalVisible}
+        onClose={() => setIsSupportModalVisible(false)}
+      />
+
+      <TermsOfServiceModal
+        visible={isTermsModalVisible}
+        onClose={() => setIsTermsModalVisible(false)}
+      />
     </View>
   );
 };
@@ -568,12 +504,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16, 185, 129, 0.15)',
     marginBottom: 18,
     overflow: 'hidden',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
   },
   settingRowTouchable: {
     flexDirection: 'row',

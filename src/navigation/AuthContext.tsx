@@ -7,13 +7,55 @@ import React, {
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import messaging from '@react-native-firebase/messaging'; // 👈 Import Firebase messaging
 import { secondaryMarketApi } from '../services/api/secondaryMarketApi';
 
 const ACCESS_TOKEN_KEY = 'accessToken';
 const CACHED_WALLET_KEY = 'cached_walletAddress';
-const USER_DATA_KEY = 'userData'; // 👈 Key for caching user profile
+const USER_DATA_KEY = 'userData';
 
 const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+const API_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:4000/api'
+    : 'http://127.0.0.1:4000/api';
+
+// 👇 Global helper to handle FCM token request and backend sync
+const registerAndSyncFCMToken = async (userId: string) => {
+  try {
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    if (enabled) {
+      if (
+        Platform.OS === 'ios' &&
+        !messaging().isDeviceRegisteredForRemoteMessages
+      ) {
+        await messaging().registerDeviceForRemoteMessages();
+      }
+
+      const fcmToken = await messaging().getToken();
+      if (fcmToken) {
+        console.log(
+          '🔥 [AuthContext] FCM Token Generated & Syncing:',
+          fcmToken,
+        );
+        await fetch(`${API_URL}/users/fcm-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, fcmToken, device: Platform.OS }),
+          credentials: 'include',
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[AuthContext] Failed to register/sync FCM token:', error);
+  }
+};
 
 export interface UserProfile {
   id?: string;
@@ -101,6 +143,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             ...userProfile,
             walletAddress: normalizedWallet,
           });
+
+          // 👇 Trigger FCM registration on app boot if session already exists
+          const activeUserId = userProfile.id || userProfile._id;
+          if (activeUserId) {
+            registerAndSyncFCMToken(activeUserId);
+          }
         } else {
           setIsAuthenticated(false);
           setUser(null);
@@ -171,6 +219,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       });
 
       setIsAuthenticated(true);
+
+      // 👇 Trigger FCM registration immediately on successful Login/Signup
+      const activeUserId = userProfile.id || userProfile._id;
+      if (activeUserId) {
+        registerAndSyncFCMToken(activeUserId);
+      }
     },
     [],
   );

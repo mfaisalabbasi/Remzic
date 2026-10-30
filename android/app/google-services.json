@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "188882603816",
+    "project_id": "remzic-1",
+    "storage_bucket": "remzic-1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:188882603816:android:b6704eee37cde908b94a1d",
+        "android_client_info": {
+          "package_name": "com.remzic"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUSyAlhglOmmFF4BxzOsP0pGbRGqrHvLI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

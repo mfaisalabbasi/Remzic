@@ -7,7 +7,8 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, '16.4'
 prepare_react_native_project!
 
-use_frameworks! :linkage => :static
+# React Native Firebase requires dynamic linkage
+use_frameworks! :linkage => :dynamic
 
 target 'remzic' do
   config = use_native_modules!
@@ -16,6 +17,11 @@ target 'remzic' do
     :path => config[:reactNativePath],
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
+
+  # Pin Firebase iOS SDK to a stable pre-Swift 6.2.3 version to prevent SPM compiler errors
+  installer_options = {
+    :apple_silicon_support => true
+  }
 
   post_install do |installer|
     react_native_post_install(

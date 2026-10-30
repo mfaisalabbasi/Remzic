@@ -1,4 +1,5 @@
-import React from 'react';
+// src/screens/HomeScreen.tsx (or wherever your HomeScreen is located)
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +7,10 @@ import {
   ScrollView,
   RefreshControl,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import messaging from '@react-native-firebase/messaging';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../navigation/AuthContext';
 
@@ -17,9 +20,45 @@ import { PortfolioCard } from '../../components/home/PortfolioCard';
 import { QuickActionsGrid } from '../../components/home/QuickActionsGrid';
 import { FeaturedAssetCard } from '../../components/home/FeaturedAssetCard';
 
+const API_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:4000/api'
+    : 'http://localhost:4000/api';
+
 export const HomeScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+
+  // 👇 Backup safety trigger on Home mount if user ID is active
+  useEffect(() => {
+    const ensureFCMToken = async () => {
+      const userId = user?.id || user?._id;
+      if (!userId) return;
+
+      try {
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+        if (enabled) {
+          const fcmToken = await messaging().getToken();
+          if (fcmToken) {
+            await fetch(`${API_URL}/users/fcm-token`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId, fcmToken, device: Platform.OS }),
+              credentials: 'include',
+            });
+          }
+        }
+      } catch (e) {
+        console.error('[HomeScreen] FCM backup sync failed:', e);
+      }
+    };
+
+    ensureFCMToken();
+  }, [user?.id]);
 
   const {
     userName,

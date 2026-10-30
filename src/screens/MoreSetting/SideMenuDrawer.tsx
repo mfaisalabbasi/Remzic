@@ -240,7 +240,7 @@ const menuItems = [
   { label: 'Distributions', screen: 'Distributions', isTab: false },
   { label: 'Wallet Recovery', screen: 'WalletRecovery', isTab: false },
   { label: 'Notifications', screen: 'Notifications', isTab: false, badge: '1' },
-  { label: 'Profile', screen: 'Profile', isTab: false },
+  // { label: 'Profile', screen: 'Profile', isTab: false },
   { label: 'Settings', screen: 'Profile', isTab: false },
   { label: 'Help & Support', screen: 'Profile', isTab: false },
 ];
